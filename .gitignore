@@ -13,6 +13,7 @@
 .externalNativeBuild
 .cxx
 .kotlin
+__pycache__/
 local.properties
 
 # Release signing material. Never commit these; see keystore.properties.sample.
