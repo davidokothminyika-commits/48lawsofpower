@@ -16,9 +16,15 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * Room copies the asset only when the database file does not exist yet, so a device that already
  * has a stale copy installed must uninstall the app before reinstalling.
  */
-@Database(entities = [LawEntity::class], version = 4, exportSchema = true)
+@Database(
+    entities = [LawEntity::class, HighlightEntity::class, ReadingDayEntity::class],
+    version = 5,
+    exportSchema = true,
+)
 abstract class LawDatabase : RoomDatabase() {
     abstract fun lawDao(): LawDao
+    abstract fun highlightDao(): HighlightDao
+    abstract fun progressDao(): ProgressDao
 
     companion object {
         private const val NAME = "laws_database"
@@ -76,6 +82,56 @@ abstract class LawDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Version 4 -> 5: annotations and reading history.
+         *
+         * Pure additions. `laws` is untouched, so existing mastery, bookmarks, and the editorial
+         * blocks all carry across untouched - this is the first migration that does not have to
+         * accept losing content.
+         *
+         * The new tables must be created here by hand *and* exist in the pre-packaged asset. Room
+         * only copies the asset when no database file exists yet, so an install that upgrades in
+         * place runs this migration while a fresh install gets the tables from the asset. Both
+         * paths have to land on the same schema or Room's post-migration validation crashes.
+         */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `highlights` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `law_id` INTEGER NOT NULL,
+                        `section` TEXT NOT NULL,
+                        `start` INTEGER NOT NULL,
+                        `end` INTEGER NOT NULL,
+                        `color` TEXT NOT NULL,
+                        `note` TEXT NOT NULL DEFAULT '',
+                        `created_at` INTEGER NOT NULL,
+                        FOREIGN KEY(`law_id`) REFERENCES `laws`(`id`)
+                            ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_highlights_law_id` ON `highlights` (`law_id`)")
+                // `reading_days` deliberately gets no explicit index. `day` is an
+                // INTEGER PRIMARY KEY, which SQLite stores as the rowid: already unique and
+                // already indexed by definition. Declaring one as well is redundant, and Room
+                // then demands the migration reproduce its uniqueness exactly.
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `reading_days` (
+                        `day` INTEGER PRIMARY KEY NOT NULL,
+                        `laws_read` INTEGER NOT NULL DEFAULT 0,
+                        `seconds_read` INTEGER NOT NULL DEFAULT 0
+                    )
+                    """.trimIndent(),
+                )
+            }
+        }
+
+        /** Migrations in order. Add each one here or upgrades from older installs crash on launch. */
+        val ALL_MIGRATIONS = arrayOf(MIGRATION_3_4, MIGRATION_4_5)
+
         fun getDatabase(context: Context): LawDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -84,7 +140,7 @@ abstract class LawDatabase : RoomDatabase() {
                     NAME,
                 )
                     .createFromAsset(ASSET)
-                    .addMigrations(MIGRATION_3_4)
+                    .addMigrations(*ALL_MIGRATIONS)
                     .build()
                 INSTANCE = instance
                 instance

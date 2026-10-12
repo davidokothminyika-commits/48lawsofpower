@@ -88,17 +88,29 @@ def build(laws: list[dict], version: int) -> None:
     identity_hash = schema["database"]["identityHash"]
 
     entities = schema["database"]["entities"]
-    if len(entities) != 1:
-        sys.exit(f"expected exactly one entity in the schema, found {len(entities)}")
-    columns = [f["columnName"] for f in entities[0]["fields"]]
-    create_sql = entities[0]["createSql"].replace("${TABLE_NAME}", "laws")
+    by_table = {e["tableName"]: e for e in entities}
+    if "laws" not in by_table:
+        sys.exit("schema has no 'laws' table")
+
+    laws_entity = by_table["laws"]
+    columns = [f["columnName"] for f in laws_entity["fields"]]
 
     if ASSET_DB.exists():
         ASSET_DB.unlink()
 
     conn = sqlite3.connect(ASSET_DB)
     try:
-        conn.execute(create_sql)
+        # Create every table the schema declares, not just `laws`. Room validates the whole
+        # database against the identity hash after opening it, so a pre-packaged asset that is
+        # missing `highlights` or `reading_days` fails validation on a fresh install even though
+        # every row of content is present. These stay empty; the app fills them at runtime.
+        conn.execute("PRAGMA foreign_keys = ON")
+        for entity in entities:
+            table = entity["tableName"]
+            conn.execute(entity["createSql"].replace("${TABLE_NAME}", table))
+            for index in entity.get("indices", []):
+                conn.execute(index["createSql"].replace("${TABLE_NAME}", table))
+
         conn.execute(
             "CREATE TABLE IF NOT EXISTS room_master_table "
             "(id INTEGER PRIMARY KEY, identity_hash TEXT)"
@@ -108,8 +120,6 @@ def build(laws: list[dict], version: int) -> None:
             (identity_hash,),
         )
 
-        placeholders = ", ".join("?" * len(columns))
-        names = ", ".join(f"`{c}`" for c in columns)
         rows = [
             (
                 law["lawNumber"],
@@ -154,8 +164,15 @@ def build(laws: list[dict], version: int) -> None:
         if stored != identity_hash:
             sys.exit("identity hash mismatch")
         count = conn.execute("SELECT COUNT(*) FROM laws").fetchone()[0]
+        tables = [
+            r[0]
+            for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+            )
+        ]
         print(f"wrote {count} laws to {ASSET_DB.relative_to(PROJECT)}")
         print(f"schema v{version}, identity {identity_hash}")
+        print(f"tables: {', '.join(tables)}")
     finally:
         conn.close()
 
@@ -163,7 +180,7 @@ def build(laws: list[dict], version: int) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--content-dir", type=Path, default=PROJECT / "content")
-    parser.add_argument("--version", type=int, default=4)
+    parser.add_argument("--version", type=int, default=5)
     args = parser.parse_args()
 
     build(load_content(args.content_dir), args.version)
