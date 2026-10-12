@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Design tokens mirrored from ui/theme/Color.kt for the platform window. -->
+    <color name="obsidian_black">#FF0A0A0B</color>
+    <color name="court_gray">#FF141416</color>
+    <color name="sovereign_gold">#FFD4AF37</color>
+</resources>

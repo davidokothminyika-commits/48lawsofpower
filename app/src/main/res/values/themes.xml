@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!--
+        Dark, edge-to-edge shell. The app has a single Obsidian Black canvas with no light
+        variant, so the platform theme must be dark too - otherwise the window flashes white
+        between the launcher tap and the first Compose frame.
+    -->
+    <style name="Theme._48LawsOfPower" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/obsidian_black</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+</resources>
