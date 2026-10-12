@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -5,7 +7,31 @@ plugins {
     alias(libs.plugins.jetbrains.kotlin.plugin.serialization)
 }
 
+/**
+ * Release signing, read from `keystore.properties` at the repo root (gitignored; see
+ * `keystore.properties.sample`).
+ *
+ * Falls back to debug signing when the file is absent so a fresh clone still builds. That
+ * fallback is also why the key is not committed: losing the keystore means losing the ability to
+ * update an already-installed app, and there is no recovery for that.
+ */
+val releaseSigning: Properties? = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+
 android {
+    signingConfigs {
+        if (releaseSigning != null) {
+            create("release") {
+                storeFile = file(releaseSigning.getProperty("storeFile"))
+                storePassword = releaseSigning.getProperty("storePassword")
+                keyAlias = releaseSigning.getProperty("keyAlias")
+                keyPassword = releaseSigning.getProperty("keyPassword")
+            }
+        }
+    }
+
     namespace = "com.example.a48lawsofpower"
     compileSdk {
         version = release(37)
@@ -23,12 +49,20 @@ android {
 
     buildTypes {
         release {
-            // Dev convenience: sign release builds with the debug key so they can be installed
-            // directly on a device. A debug Compose build is several times slower than a release
-            // build, so always judge scrolling performance on the release variant.
-            signingConfig = signingConfigs.getByName("debug")
+            // Falls back to the debug key so a clone without keystore.properties still builds an
+            // installable release. A debug Compose build is several times slower, so always judge
+            // scrolling performance on the release variant.
+            signingConfig = if (releaseSigning != null) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             optimization {
-                enable = true
+                // Off deliberately. This ships as a plain, unshrunk APK: R8 on Compose + Room +
+                // Moshi without hand-written keep rules can pass the build and then crash at
+                // runtime in ways only a real device reveals. Flip `enable` to true if you want a
+                // much smaller APK and are willing to test the installed result.
+                enable = false
                 packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
             }
         }

@@ -12,4 +12,10 @@
 /captures
 .externalNativeBuild
 .cxx
+.kotlin
 local.properties
+
+# Release signing material. Never commit these; see keystore.properties.sample.
+/keystore.properties
+*.jks
+*.keystore
