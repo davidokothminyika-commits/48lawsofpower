@@ -1,13 +1,14 @@
 package com.example.a48lawsofpower.legal
 
 /**
- * The three documents the app can present. [title] is the only user-facing string kept here; icons
+ * The documents the app can present. [title] is the only user-facing string kept here; icons
  * and copy are chosen in the UI layer so this package stays free of Compose imports.
  */
 enum class LegalDocumentKind(val title: String) {
     Terms("Terms of Use"),
     Privacy("Privacy Policy"),
     Cookies("Cookie Notice"),
+    Attribution("Attribution & Copyright"),
 }
 
 /**

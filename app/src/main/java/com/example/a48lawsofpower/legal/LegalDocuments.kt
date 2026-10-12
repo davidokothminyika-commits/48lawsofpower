@@ -17,6 +17,10 @@ package com.example.a48lawsofpower.legal
  *   3. Bump `CONSENT_VERSION` and each document's `version`. Readers who accepted the old text are
  *      re-prompted automatically - see `ConsentStore` for why that is version-gated.
  *
+ * One exception to all of the above: `ATTRIBUTION` at the bottom of this file is real text and is
+ * already marked `isPlaceholder = false`. It is a factual statement of where the law names come
+ * from, not a set of terms, so there is nothing in it to review with a lawyer.
+ *
  * One factual note that is NOT placeholder: the AndroidManifest declares `android.permission.INTERNET`,
  * but no screen in this app currently opens a network connection. If that stays true, delete the
  * permission. Shipping an unused INTERNET permission invites scrutiny on store review and directly
@@ -32,7 +36,7 @@ private const val PLACEHOLDER_NOTICE =
  * Stored alongside the acceptance record, so raising this value re-prompts everyone whose stored
  * version is lower. Raise it whenever the terms change in a way a reader would want to know about.
  */
-const val CONSENT_VERSION = 1
+const val CONSENT_VERSION = 2
 
 private val TERMS = LegalDocument(
     kind = LegalDocumentKind.Terms,
@@ -253,8 +257,68 @@ private val COOKIES = LegalDocument(
     ),
 )
 
+/**
+ * Attribution to the original author.
+ *
+ * Unlike the three documents above this one is not a drafting skeleton and is not marked
+ * [isPlaceholder]: every statement in it is a factual claim about where the names and ideas come
+ * from, and it needs no lawyer. It is deliberately accurate rather than reassuring - an attribution
+ * notice records a fact, it does not by itself settle what that fact means legally.
+ */
+private val ATTRIBUTION = LegalDocument(
+    kind = LegalDocumentKind.Attribution,
+    summary = "The 48 Laws of Power is the work of Robert Greene. This app is original " +
+        "commentary on those laws, not the book.",
+    version = 1,
+    lastUpdated = "Not yet dated",
+    isPlaceholder = false,
+    sections = listOf(
+        LegalSection(
+            heading = "1. Who wrote what",
+            paragraphs = listOf(
+                "\"The 48 Laws of Power\" and the names of its 48 laws are the work of Robert Greene, " +
+                    "first published in 1998.",
+                "This app is not that book. It contains no text from it. Every summary, core " +
+                    "reading, historical example, and reversal in the app is original commentary " +
+                    "written for this app.",
+                "The app exists because the laws are worth studying as a historical account of how " +
+                    "power has been handled, not because the commentary could substitute for the " +
+                    "book. If you want Greene's actual argument, his own cases, and his own prose, " +
+                    "you have to read the book.",
+            ),
+        ),
+        LegalSection(
+            heading = "2. What this notice does and does not do",
+            paragraphs = listOf(
+                "This notice credits the author and states plainly what the app does and does not " +
+                    "contain. That is all it does.",
+                "It is not a permission, and displaying it does not make the app's use of the " +
+                    "titles lawful. Whether a given use is permitted is decided by the copyright " +
+                    "law of your jurisdiction and, in practice, by whoever owns the rights.",
+                "If you are the rights holder and you want the use changed or stopped, the app's " +
+                    "repository is linked from the store listing and every screen has a Legal tab. " +
+                    "A takedown request will be honoured.",
+            ),
+            bullets = listOf(
+                "Do not read this screen as legal advice or as a defence.",
+                "Do assume it covers material added in a future version. If the content ever stops " +
+                    "being original, this document has to change with it.",
+            ),
+        ),
+        LegalSection(
+            heading = "3. The code",
+            paragraphs = listOf(
+                "The application's source code is released under the MIT License. The licence " +
+                    "covers the code only. It grants no rights in the book, in the titles of the " +
+                    "laws, or in anyone else's material, and it does not license the MIT licence to " +
+                    "override the copyright in those.",
+            ),
+        ),
+    ),
+)
+
 /** Every document, in the order the consent screen and the Legal tab list them. */
-val allLegalDocuments: List<LegalDocument> = listOf(TERMS, PRIVACY, COOKIES)
+val allLegalDocuments: List<LegalDocument> = listOf(TERMS, PRIVACY, COOKIES, ATTRIBUTION)
 
 /** Resolves a document by kind. Returns `null` only for an unknown route, which the screen rejects. */
 fun legalDocumentFor(kind: LegalDocumentKind): LegalDocument? =

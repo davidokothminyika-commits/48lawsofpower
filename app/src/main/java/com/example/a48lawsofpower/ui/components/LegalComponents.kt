@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.Balance
 import androidx.compose.material.icons.outlined.Cookie
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Security
@@ -125,6 +126,7 @@ fun LegalDocumentKind.icon(): ImageVector = when (this) {
     LegalDocumentKind.Terms -> Icons.Outlined.Description
     LegalDocumentKind.Privacy -> Icons.Outlined.Security
     LegalDocumentKind.Cookies -> Icons.Outlined.Cookie
+    LegalDocumentKind.Attribution -> Icons.Outlined.Balance
 }
 
 /**
