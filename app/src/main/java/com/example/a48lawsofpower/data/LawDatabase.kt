@@ -16,9 +16,22 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * Room copies the asset only when the database file does not exist yet, so a device that already
  * has a stale copy installed must uninstall the app before reinstalling.
  */
+/**
+ * The Room schema version, in one place.
+ *
+ * This exists so the version cannot drift between the `@Database` annotation, the exported schema
+ * JSON, the pre-packaged asset, and `PrepackagedDatabaseTest`. That test previously hardcoded
+ * "4.json" and silently compared the v5 asset against the v4 identity hash, which failed on every
+ * build for a reason that had nothing to do with the asset.
+ *
+ * Bump this, add the matching `MIGRATION_n_n`, run the build so Room exports `<version>.json`,
+ * then regenerate the asset with `tools/build_laws_db.py`.
+ */
+const val LAW_DATABASE_SCHEMA_VERSION = 5
+
 @Database(
     entities = [LawEntity::class, HighlightEntity::class, ReadingDayEntity::class],
-    version = 5,
+    version = LAW_DATABASE_SCHEMA_VERSION,
     exportSchema = true,
 )
 abstract class LawDatabase : RoomDatabase() {

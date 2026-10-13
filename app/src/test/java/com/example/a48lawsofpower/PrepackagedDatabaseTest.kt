@@ -5,6 +5,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 import java.nio.ByteBuffer
+import com.example.a48lawsofpower.data.LAW_DATABASE_SCHEMA_VERSION
 import java.nio.charset.StandardCharsets
 
 /**
@@ -16,7 +17,16 @@ import java.nio.charset.StandardCharsets
  */
 class PrepackagedDatabaseTest {
 
-    private val schemaFile = File("schemas/com.example.a48lawsofpower.data.LawDatabase/4.json")
+    /**
+     * Read from the single constant Room itself is configured with, never hardcoded.
+     *
+     * This test used to point at "4.json" literally. When the schema moved to 5 it kept
+     * comparing the v5 asset against the v4 identity hash and failed on every build, which is a
+     * misleading way to learn that you changed a table.
+     */
+    private val schemaFile = File(
+        "schemas/com.example.a48lawsofpower.data.LawDatabase/${LAW_DATABASE_SCHEMA_VERSION}.json",
+    )
     private val assetFile = File("src/main/assets/database/laws.db")
 
     private val schemaJson: String
