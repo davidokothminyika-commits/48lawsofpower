@@ -27,11 +27,34 @@ class LawsViewModel(private val lawDao: LawDao) : ViewModel() {
     private val _selectedCategory = MutableStateFlow<String?>(null)
     val selectedCategory: StateFlow<String?> = _selectedCategory.asStateFlow()
 
-    /** The Dossier list, narrowed by the active filter pill. `null` means "all". */
+    private val _query = MutableStateFlow("")
+    val query: StateFlow<String> = _query.asStateFlow()
+
+    /**
+     * The Dossier list, narrowed by the active filter pill and the search box. `null` means "all".
+     *
+     * Search and filter compose rather than replace one another: a reader who searches "enemy"
+     * while a category pill is active expects the intersection, not one silently discarding the
+     * other. An empty query is not a match-all special case in the query itself - it simply fails
+     * to contain anything, so it needs no branch here.
+     */
     val filteredLaws: StateFlow<List<LawOverview>> =
-        combine(allLaws, _selectedCategory) { laws, category ->
-            if (category == null) laws else laws.filter { it.category == category }
+        combine(allLaws, _selectedCategory, _query) { laws, category, query ->
+            val byCategory = if (category == null) laws else laws.filter { it.category == category }
+            val needle = query.trim()
+            if (needle.isEmpty()) {
+                byCategory
+            } else {
+                byCategory.filter { law ->
+                    law.title.contains(needle, ignoreCase = true) ||
+                        law.summary.contains(needle, ignoreCase = true)
+                }
+            }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun setQuery(value: String) {
+        _query.value = value
+    }
 
     /** Every category present in the data, in a stable order, for the filter row. */
     val categories: StateFlow<List<String>> =

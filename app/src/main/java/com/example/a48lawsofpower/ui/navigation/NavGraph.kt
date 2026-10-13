@@ -65,19 +65,31 @@ fun AppNavGraph(viewModel: LawsViewModel, legalViewModel: LegalViewModel) {
     val laws by viewModel.filteredLaws.collectAsStateWithLifecycle()
     val categories by viewModel.categories.collectAsStateWithLifecycle()
     val selectedCategory by viewModel.selectedCategory.collectAsStateWithLifecycle()
+    val query by viewModel.query.collectAsStateWithLifecycle()
     val bookmarked by viewModel.bookmarkedLaws.collectAsStateWithLifecycle()
     val selectedLaw by viewModel.selectedLaw.collectAsStateWithLifecycle()
     val dailyLaw by viewModel.dailyLaw.collectAsStateWithLifecycle()
+    // The Daily Codex law, promoted to the Home screen's featured card. Resolved against the
+    // *filtered* list so a search or category pill that excludes it also drops the card, rather
+    // than leaving a featured law the reader cannot otherwise see.
+    val featured = dailyLaw?.let { daily ->
+        laws.firstOrNull { it.lawNumber == daily.lawNumber }
+    }
     val totalLaws by viewModel.lawCount.collectAsStateWithLifecycle()
     val masteredLaws by viewModel.masteredCount.collectAsStateWithLifecycle()
     val consentRecord by legalViewModel.record.collectAsStateWithLifecycle()
 
     val activeTab = backStackEntry?.destination.rootTab()
+    // Explicit, rather than relying on rootTab() returning null for the splash. During the first
+    // frame after a cold start currentBackStackEntryAsState() can still report the entry restored
+    // from saved state while the NavHost is already drawing the splash, which put the bottom bar
+    // over the Get Started button and swallowed taps meant for it.
+    val onSplash = backStackEntry?.destination?.hasRoute<SplashRoute>() == true
     val haptics = rememberHaptics()
 
     Scaffold(
         bottomBar = {
-            if (activeTab != null) {
+            if (activeTab != null && !onSplash) {
                 CodexBottomBar(
                     current = activeTab,
                     onSelect = { destination ->
@@ -110,10 +122,13 @@ fun AppNavGraph(viewModel: LawsViewModel, legalViewModel: LegalViewModel) {
                 composable<DossierRoute> {
                     DossierScreen(
                         laws = laws,
+                        featured = featured,
                         categories = categories,
                         selectedCategory = selectedCategory,
+                        query = query,
                         totalLaws = totalLaws,
                         masteredLaws = masteredLaws,
+                        onQueryChange = viewModel::setQuery,
                         onCategorySelected = viewModel::selectCategory,
                         onLawClick = { number -> navController.openLaw(number, viewModel) },
                         onToggleBookmark = viewModel::toggleBookmark,

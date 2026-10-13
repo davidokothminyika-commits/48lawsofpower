@@ -73,7 +73,7 @@ fun LawCardPreview(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 56.dp)
+            .heightIn(min = 84.dp)
             .clip(RoundedCornerShape(Metrics.CornerRadius))
             .background(if (pressed) CourtGrayElevated else CourtGray)
             .combinedClickable(
@@ -82,7 +82,7 @@ fun LawCardPreview(
                 onLongClick = onLongClick,
                 onClick = onClick,
             )
-            .padding(horizontal = Spacing.md, vertical = Spacing.sm),
+            .padding(horizontal = Spacing.md, vertical = Spacing.md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         LawNumberBadge(number = law.lawNumber, mastered = law.read)
@@ -95,42 +95,46 @@ fun LawCardPreview(
                 style = LawTheme.typography.lawTitle,
                 color = ParchmentWhite,
                 fontFamily = FontFamily.Serif,
-                fontSize = 17.sp,
-                lineHeight = 23.sp,
+                fontSize = 18.sp,
+                lineHeight = 25.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
+            Spacer(Modifier.height(5.dp))
             Text(
                 text = law.summary,
                 style = LawTheme.typography.bodySecondary,
                 color = ShadowGray,
                 fontSize = 13.sp,
-                lineHeight = 18.sp,
-                maxLines = 1,
+                lineHeight = 19.sp,
+                // Two lines, not one. Several law titles wrap to a second line, and a single-line
+                // summary under a two-line title left the shorter titles looking half-empty.
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
         }
 
-        Spacer(Modifier.width(Spacing.xs))
+        Spacer(Modifier.width(Spacing.sm))
 
-        ActionIconButton(
-            icon = if (law.bookmarked) Icons.Outlined.Bookmark else Icons.Outlined.BookmarkBorder,
-            contentDescription = if (law.bookmarked) {
-                "Remove ${law.title} from My Strategies"
-            } else {
-                "Add ${law.title} to My Strategies"
-            },
-            active = law.bookmarked,
-            onClick = onToggleBookmark,
-        )
-
-        Icon(
-            imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
-            contentDescription = null,
-            tint = ShadowGray,
-            modifier = Modifier.size(22.dp),
-        )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            ActionIconButton(
+                icon = if (law.bookmarked) Icons.Outlined.Bookmark else Icons.Outlined.BookmarkBorder,
+                contentDescription = if (law.bookmarked) {
+                    "Remove ${law.title} from My Strategies"
+                } else {
+                    "Add ${law.title} to My Strategies"
+                },
+                active = law.bookmarked,
+                onClick = onToggleBookmark,
+            )
+            Icon(
+                imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                contentDescription = null,
+                tint = ShadowGray,
+                modifier = Modifier.size(20.dp),
+            )
+        }
     }
 }
 
@@ -144,7 +148,7 @@ fun LawCardPreview(
 private fun LawNumberBadge(number: Int, mastered: Boolean) {
     Box(
         modifier = Modifier
-            .size(34.dp)
+            .size(40.dp)
             .clip(CircleShape)
             .background(if (mastered) ObservanceGreen else SovereignGold),
         contentAlignment = Alignment.Center,
@@ -152,7 +156,7 @@ private fun LawNumberBadge(number: Int, mastered: Boolean) {
         Text(
             text = number.toString(),
             color = ParchmentWhite,
-            fontSize = 14.sp,
+            fontSize = 16.sp,
             fontWeight = FontWeight.Bold,
         )
     }
