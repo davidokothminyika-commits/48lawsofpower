@@ -35,11 +35,15 @@ import com.example.a48lawsofpower.ui.screens.DossierScreen
 import com.example.a48lawsofpower.ui.screens.LawDetailScreen
 import com.example.a48lawsofpower.ui.screens.LegalDocumentScreen
 import com.example.a48lawsofpower.ui.screens.LegalScreen
+import com.example.a48lawsofpower.ui.screens.SplashScreen
 import com.example.a48lawsofpower.ui.screens.StrategiesScreen
 import com.example.a48lawsofpower.ui.theme.Spacing
 import kotlinx.serialization.Serializable
 
 // Pure type-safe routes
+
+@Serializable object SplashRoute
+
 @Serializable object DossierRoute
 
 @Serializable object StrategiesRoute
@@ -87,9 +91,22 @@ fun AppNavGraph(viewModel: LawsViewModel, legalViewModel: LegalViewModel) {
         Box(Modifier.fillMaxSize()) {
             NavHost(
                 navController = navController,
-                startDestination = DossierRoute,
+                startDestination = SplashRoute,
                 modifier = Modifier.fillMaxSize(),
             ) {
+                composable<SplashRoute> {
+                    // Popped, not pushed onto: the Dossier must not sit behind the splash, or a
+                    // back gesture from it would return to a dead entry screen. popUpTo the
+                    // splash itself, which removes it from the back stack entirely.
+                    SplashScreen(
+                        onGetStarted = {
+                            navController.navigate(DossierRoute) {
+                                popUpTo(SplashRoute) { inclusive = true }
+                            }
+                        },
+                    )
+                }
+
                 composable<DossierRoute> {
                     DossierScreen(
                         laws = laws,
@@ -213,7 +230,11 @@ private fun NavHostController.switchTab(destination: RootDestination) {
         RootDestination.Legal -> LegalRoute
     }
     navigate(route) {
-        popUpTo(graph.startDestinationId) { saveState = true }
+        // Pop to the Dossier explicitly, NOT to graph.startDestinationId. The start destination
+        // is now the splash, which is popped off the stack on entry; popping to it here would
+        // either fail to find it or unwind the user's tab state back to the first tab on every
+        // switch.
+        popUpTo(DossierRoute) { saveState = true }
         launchSingleTop = true
         restoreState = true
     }

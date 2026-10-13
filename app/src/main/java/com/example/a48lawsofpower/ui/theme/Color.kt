@@ -3,27 +3,38 @@ package com.example.a48lawsofpower.ui.theme
 import androidx.compose.ui.graphics.Color
 
 /**
- * Obsidian Black scale - the single, monolithic dark canvas the whole app is built on.
+ * The app's colour names, bound to the palette in [DesignTokens].
+ *
+ * Every screen in the app imports from here by name rather than naming a hex value, which is why
+ * the retheme was a one-file change: the names below were re-pointed at the crimson palette and
+ * every screen followed.
+ *
+ * Do not add raw colours here. If a screen needs a colour that is not in the design, add it to
+ * [DesignTokens] and alias it below, so the palette stays the single source of truth.
  */
-val ObsidianBlack = Color(0xFF0A0A0B)   // Base screen canvas
-val CourtGray = Color(0xFF141416)      // Cards, sheets, module backdrops
-val CourtGrayElevated = Color(0xFF1E1E22) // Interactive elements, pressed cards
-val HairlineBorder = Color(0xFF28282C) // 1px dividers and boundary rules
+
+/**
+ * Obsidian Black scale - the dark canvas. Rebound from #0A0A0B to the design's #111111 family.
+ */
+val ObsidianBlack = Ink
+val CourtGray = InkElevated
+val CourtGrayElevated = Color(0xFF26262A)
+val HairlineBorder = InkBorder
 
 /**
  * Parchment / Shadow type colours.
  */
-val ParchmentWhite = Color(0xFFF5F5F7) // High readability text
-val ShadowGray = Color(0xFF8E8E93)      // Metadata, law numbers, context
+val ParchmentWhite = InkText
+val ShadowGray = InkTextMuted
 
 /**
- * Sovereign authority accents.
+ * Authority accents. This is the visible change: gold is gone, crimson carries the accent.
  */
-val SovereignGold = Color(0xFFD4AF37)   // Main accents, key law markers, highlights
-val BurnishedBrass = Color(0xFFAA7C11)  // Subtle interactive states, active filters
+val SovereignGold = Crimson
+val BurnishedBrass = CrimsonBright
 
 /**
- * Semantic feedback states.
+ * Semantic feedback states. Unchanged - these mean success and failure, not brand.
  */
-val TransgressionRed = Color(0xFFE53E3E) // Failure to observe the law
-val ObservanceGreen = Color(0xFF38A169)  // Success / alignment with the law
+val TransgressionRed = Color(0xFFE53E3E)
+val ObservanceGreen = Color(0xFF38A169)

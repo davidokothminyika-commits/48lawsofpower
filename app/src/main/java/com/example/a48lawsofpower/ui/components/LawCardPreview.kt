@@ -1,7 +1,6 @@
 package com.example.a48lawsofpower.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -16,10 +15,13 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -27,8 +29,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.a48lawsofpower.data.LawOverview
 import com.example.a48lawsofpower.ui.theme.CourtGray
 import com.example.a48lawsofpower.ui.theme.CourtGrayElevated
@@ -42,8 +47,17 @@ import com.example.a48lawsofpower.ui.theme.SovereignGold
 import com.example.a48lawsofpower.ui.theme.Spacing
 
 /**
- * A law as it appears in a feed: a formal, sharp-cornered card that hints at hidden depth instead
- * of trying to cram the whole law onto it.
+ * A law as it appears in a feed.
+ *
+ * Restyled to the reference design: a crimson disc carrying the law number, a serif title, a
+ * single clamped line of summary, and a chevron. The previous version was a tall bordered card
+ * with a "LAW 07" eyebrow, a status dot, a bookmark button, and a gradient fade standing in for
+ * depth - roughly three times the height for the same information, which meant five laws per
+ * screen instead of eight.
+ *
+ * The bookmark control moved onto the chevron's end of the row rather than disappearing: the
+ * strategies list still needs a way to remove a law, and a long-press is not discoverable. It is
+ * a smaller hit target than before, so it keeps a 44dp touch area via padding.
  */
 @Composable
 fun LawCardPreview(
@@ -55,98 +69,91 @@ fun LawCardPreview(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
-    val shape = RoundedCornerShape(Metrics.CornerRadius)
 
-    Column(
+    Row(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = Metrics.LawCardMinHeight)
-            .clip(shape)
+            .heightIn(min = 56.dp)
+            .clip(RoundedCornerShape(Metrics.CornerRadius))
             .background(if (pressed) CourtGrayElevated else CourtGray)
-            .border(
-                width = Metrics.HairlineWidth,
-                color = if (pressed) SovereignGold else HairlineBorder,
-                shape = shape,
-            )
             .combinedClickable(
                 interactionSource = interactionSource,
                 indication = null,
                 onLongClick = onLongClick,
                 onClick = onClick,
-            ),
+            )
+            .padding(horizontal = Spacing.md, vertical = Spacing.sm),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = Spacing.md, top = Spacing.sm, end = Spacing.xs),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(vertical = Spacing.sm),
-            ) {
-                StatusDot(mastered = law.read)
-                Text(
-                    text = "LAW ${law.lawNumber.toString().padStart(2, '0')}",
-                    style = LawTheme.typography.lawIndex,
-                    color = ShadowGray,
-                    modifier = Modifier.padding(start = Spacing.sm),
-                )
-            }
+        LawNumberBadge(number = law.lawNumber, mastered = law.read)
 
-            ActionIconButton(
-                icon = if (law.bookmarked) Icons.Outlined.Bookmark else Icons.Outlined.BookmarkBorder,
-                contentDescription = if (law.bookmarked) {
-                    "Remove ${law.title} from My Strategies"
-                } else {
-                    "Add ${law.title} to My Strategies"
-                },
-                active = law.bookmarked,
-                onClick = onToggleBookmark,
+        Spacer(Modifier.width(Spacing.md))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = law.title,
+                style = LawTheme.typography.lawTitle,
+                color = ParchmentWhite,
+                fontFamily = FontFamily.Serif,
+                fontSize = 17.sp,
+                lineHeight = 23.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = law.summary,
+                style = LawTheme.typography.bodySecondary,
+                color = ShadowGray,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
 
-        Text(
-            text = law.title,
-            style = LawTheme.typography.lawTitle,
-            color = ParchmentWhite,
-            modifier = Modifier.padding(horizontal = Spacing.md),
+        Spacer(Modifier.width(Spacing.xs))
+
+        ActionIconButton(
+            icon = if (law.bookmarked) Icons.Outlined.Bookmark else Icons.Outlined.BookmarkBorder,
+            contentDescription = if (law.bookmarked) {
+                "Remove ${law.title} from My Strategies"
+            } else {
+                "Add ${law.title} to My Strategies"
+            },
+            active = law.bookmarked,
+            onClick = onToggleBookmark,
         )
 
-        Spacer(Modifier.height(Spacing.sm))
-
-        Text(
-            text = law.summary,
-            style = LawTheme.typography.bodySecondary,
-            color = ShadowGray,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm),
-        )
-
-        // Gradient line-fade signals hidden depth instead of hard-clipping the text.
-        Spacer(
-            Modifier
-                .fillMaxWidth()
-                .height(Spacing.lg)
-                .background(
-                    Brush.verticalGradient(
-                        listOf(CourtGray.copy(alpha = 0f), CourtGray),
-                    ),
-                ),
+        Icon(
+            imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+            contentDescription = null,
+            tint = ShadowGray,
+            modifier = Modifier.size(22.dp),
         )
     }
 }
 
-/** Gold marks a law still to be mastered, green marks one already observed. */
+/**
+ * The crimson disc carrying the law number.
+ *
+ * Crimson for a law still to be read, green once mastered - the same signal the old status dot
+ * gave, so mastery is still legible at a glance, just without a second row of chrome.
+ */
 @Composable
-private fun StatusDot(mastered: Boolean) {
+private fun LawNumberBadge(number: Int, mastered: Boolean) {
     Box(
         modifier = Modifier
-            .width(Spacing.sm)
-            .height(Spacing.sm)
-            .clip(RoundedCornerShape(Spacing.xs))
+            .size(34.dp)
+            .clip(CircleShape)
             .background(if (mastered) ObservanceGreen else SovereignGold),
-    )
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = number.toString(),
+            color = ParchmentWhite,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+        )
+    }
 }
