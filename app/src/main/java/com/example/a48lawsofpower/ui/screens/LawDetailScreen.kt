@@ -1,7 +1,6 @@
 package com.example.a48lawsofpower.ui.screens
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -51,6 +50,8 @@ import com.example.a48lawsofpower.ui.components.MetadataRow
 import com.example.a48lawsofpower.ui.components.Stance
 import com.example.a48lawsofpower.ui.components.rememberHaptics
 import com.example.a48lawsofpower.ui.theme.LawTheme
+import com.example.a48lawsofpower.ui.theme.Motion
+import com.example.a48lawsofpower.ui.theme.motionDuration
 import com.example.a48lawsofpower.ui.theme.ParchmentWhite
 import com.example.a48lawsofpower.ui.theme.ShadowGray
 import com.example.a48lawsofpower.ui.theme.SovereignGold
@@ -118,8 +119,16 @@ fun LawDetailScreen(
         ) { page ->
             // Ambient motion: content fades in from +10dp over 350ms as a section comes into view.
             val revealProgress = remember(page) { Animatable(0f) }
-            LaunchedEffect(page) {
-                revealProgress.animateTo(1f, tween(durationMillis = 350, easing = FastOutSlowInEasing))
+            // Read outside the effect: motionDuration reads composition state, and the effect
+            // body is a suspend lambda, not a composable scope.
+            val revealDuration = motionDuration(Motion.STANDARD)
+            LaunchedEffect(page, revealDuration) {
+                // Guidelines section 3: screen transitions 180-240ms. This was a hardcoded
+                // 350ms, which is a `long` token and only appropriate for a first-run reveal.
+                revealProgress.animateTo(
+                    1f,
+                    tween(durationMillis = revealDuration, easing = Motion.Standard),
+                )
             }
 
             SectionPage(

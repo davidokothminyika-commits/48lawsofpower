@@ -1,7 +1,6 @@
 package com.example.a48lawsofpower.ui.screens
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -44,6 +43,8 @@ import com.example.a48lawsofpower.ui.theme.CrimsonBright
 import com.example.a48lawsofpower.ui.theme.Ink
 import com.example.a48lawsofpower.ui.theme.InkText
 import com.example.a48lawsofpower.ui.theme.InkTextMuted
+import com.example.a48lawsofpower.ui.theme.Motion
+import com.example.a48lawsofpower.ui.theme.motionDuration
 
 /**
  * The entry screen: title, motto, and one button into the Dossier.
@@ -64,8 +65,11 @@ fun SplashScreen(
     modifier: Modifier = Modifier,
 ) {
     val entrance = remember { Animatable(0f) }
-    LaunchedEffect(Unit) {
-        entrance.animateTo(1f, tween(durationMillis = 650, easing = FastOutSlowInEasing))
+    // Guidelines section 3: a launch logo scales from ~96% to 100% over 180-220ms, and there is no
+    // long animated intro. The piece also fades, and under reduced motion both collapse to zero.
+    val duration = motionDuration(Motion.STANDARD)
+    LaunchedEffect(duration) {
+        entrance.animateTo(1f, tween(durationMillis = duration, easing = Motion.Settle))
     }
 
     Box(
@@ -94,7 +98,7 @@ fun SplashScreen(
                 modifier = Modifier
                     .size(148.dp)
                     .alpha(entrance.value)
-                    .scale(0.88f + 0.12f * entrance.value),
+                    .scale(0.96f + 0.04f * entrance.value),
             )
 
             Spacer(Modifier.height(40.dp))

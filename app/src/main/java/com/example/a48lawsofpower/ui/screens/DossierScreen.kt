@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -30,6 +31,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.a48lawsofpower.data.LawOverview
@@ -289,17 +292,16 @@ private fun FeaturedLawCard(
     }
 }
 
-/** Compact two-line rank header. Display type here was eating a third of the first screen. */
+/**
+ * The app title, with reading progress underneath.
+ *
+ * The rank ladder that used to sit here ("Apprentice", "Courtier", "Strategist", "Power Player",
+ * "Emperor") is gone. It was a title for progress, but it competed with the app's own name for
+ * the same slot, and a reader who has read two laws was told they were an "Apprentice" - a grade
+ * rather than a fact. The number below says the same thing without pretending to be a judgement.
+ */
 @Composable
 private fun RankHeader(totalLaws: Int, masteredLaws: Int) {
-    val rank = when (masteredLaws) {
-        0 -> "Apprentice"
-        in 1..10 -> "Courtier"
-        in 11..24 -> "Strategist"
-        in 25..47 -> "Power Player"
-        else -> "Emperor"
-    }
-
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -307,34 +309,46 @@ private fun RankHeader(totalLaws: Int, masteredLaws: Int) {
                 top = Spacing.lg,
                 start = Spacing.md,
                 end = Spacing.md,
-                bottom = Spacing.xs,
+                bottom = Spacing.sm,
             ),
     ) {
-        Text(
-            text = "48 Laws of Power",
-            style = LawTheme.typography.eyebrow,
-            color = ShadowGray,
-        )
-        Spacer(Modifier.height(Spacing.xs))
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        // "48" carries the crimson so the title matches the splash and the featured card.
+        Row(verticalAlignment = Alignment.Bottom) {
             Text(
-                text = rank,
+                text = "48",
+                style = LawTheme.typography.lawTitle,
+                color = SovereignGold,
+                fontFamily = FontFamily.Serif,
+                fontSize = 30.sp,
+                lineHeight = 36.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(Modifier.width(Spacing.sm))
+            Text(
+                text = "Laws of Power",
                 style = LawTheme.typography.lawTitle,
                 color = ParchmentWhite,
-                fontSize = 26.sp,
-                lineHeight = 32.sp,
-                modifier = Modifier.padding(end = Spacing.sm),
+                fontFamily = FontFamily.Serif,
+                fontSize = 30.sp,
+                lineHeight = 36.sp,
+                fontWeight = FontWeight.Bold,
             )
+        }
+
+        Spacer(Modifier.height(Spacing.sm))
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
-                    .size(Spacing.sm)
+                    .size(6.dp)
                     .clip(CircleShape)
                     .background(if (masteredLaws > 0) ObservanceGreen else SovereignGold),
             )
             Text(
-                text = "  $masteredLaws / $totalLaws",
+                text = "  $masteredLaws of $totalLaws laws read",
                 style = LawTheme.typography.bodySecondary,
                 color = ShadowGray,
+                fontSize = 13.sp,
             )
         }
     }
