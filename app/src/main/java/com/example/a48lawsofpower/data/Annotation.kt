@@ -125,6 +125,23 @@ interface HighlightDao {
 
     @Query("DELETE FROM highlights WHERE law_id = :lawId")
     suspend fun deleteForLaw(lawId: Int)
+
+    /**
+     * An existing highlight in this section that fully contains `[start, end)`.
+     *
+     * Backs the "select it again to remove it" behaviour. Containment rather than overlap on
+     * purpose: partially overlapping ranges are ambiguous, and resolving them here would silently
+     * delete a highlight the reader only grazed.
+     */
+    @Query(
+        """
+        SELECT * FROM highlights
+        WHERE law_id = :lawId AND section = :section
+          AND start <= :start AND `end` >= :end
+        ORDER BY (`end` - start) ASC LIMIT 1
+        """,
+    )
+    suspend fun findCovering(lawId: Int, section: String, start: Int, end: Int): HighlightEntity?
 }
 
 /** A highlight joined with just enough of its law to label it in a list. */
