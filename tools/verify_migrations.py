@@ -28,7 +28,11 @@ SCHEMA_DIR = PROJECT / "app" / "schemas" / "com.example.a48lawsofpower.data.LawD
 DATABASE_KT = PROJECT / "app" / "src" / "main" / "java" / "com" / "example" / "a48lawsofpower" / "data" / "LawDatabase.kt"
 
 # The three migrations declared in LawDatabase.Companion, oldest first.
-MIGRATIONS = [("MIGRATION_3_4", 3, 4), ("MIGRATION_4_5", 4, 5)]
+MIGRATIONS = [
+    ("MIGRATION_3_4", 3, 4),
+    ("MIGRATION_4_5", 4, 5),
+    ("MIGRATION_5_6", 5, 6),
+]
 
 
 def load(version: int) -> dict:

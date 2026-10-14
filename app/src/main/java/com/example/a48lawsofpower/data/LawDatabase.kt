@@ -27,16 +27,16 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * Bump this, add the matching `MIGRATION_n_n`, run the build so Room exports `<version>.json`,
  * then regenerate the asset with `tools/build_laws_db.py`.
  */
-const val LAW_DATABASE_SCHEMA_VERSION = 5
+const val LAW_DATABASE_SCHEMA_VERSION = 6
 
 @Database(
-    entities = [LawEntity::class, HighlightEntity::class, ReadingDayEntity::class],
+    entities = [LawEntity::class, AnnotationEntity::class, ReadingDayEntity::class],
     version = LAW_DATABASE_SCHEMA_VERSION,
     exportSchema = true,
 )
 abstract class LawDatabase : RoomDatabase() {
     abstract fun lawDao(): LawDao
-    abstract fun highlightDao(): HighlightDao
+    abstract fun annotationDao(): AnnotationDao
     abstract fun progressDao(): ProgressDao
 
     companion object {
@@ -142,8 +142,63 @@ abstract class LawDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Version 5 -> 6: highlights become annotations.
+         *
+         * The old `highlights` table stored only ranges, which cannot be explained in a review
+         * list and cannot be re-found after a re-encode. `annotations` adds the covered text and a
+         * type discriminator so highlights, notes, and bookmarks share one table.
+         *
+         * Rows are copied across in SQL before the old table is dropped. `anchor_text` is written
+         * empty: computing it needs the law prose the range points into, and the section is stored
+         * as a *name*, so `substr()` has nothing to read. The backfill happens on read instead -
+         * see [AnnotationDao.backfillAnchorText] - because that also repairs any mark whose anchor
+         * was lost, not just the ones this migration creates.
+         *
+         * `reading_days` is untouched.
+         */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `annotations` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `law_id` INTEGER NOT NULL,
+                        `section` TEXT NOT NULL,
+                        `start` INTEGER NOT NULL,
+                        `end` INTEGER NOT NULL,
+                        `anchor_text` TEXT NOT NULL,
+                        `type` TEXT NOT NULL,
+                        `color` TEXT NOT NULL,
+                        `note` TEXT NOT NULL DEFAULT '',
+                        `created_at` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL DEFAULT 0,
+                        FOREIGN KEY(`law_id`) REFERENCES `laws`(`id`)
+                            ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_annotations_law_id` ON `annotations` (`law_id`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_annotations_type` ON `annotations` (`type`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_annotations_created_at` ON `annotations` (`created_at`)")
+
+                db.execSQL(
+                    """
+                    INSERT INTO `annotations`
+                        (`law_id`, `section`, `start`, `end`, `anchor_text`,
+                         `type`, `color`, `note`, `created_at`, `updated_at`)
+                    SELECT
+                        `law_id`, `section`, `start`, `end`, '',
+                        'highlight', `color`, `note`, `created_at`, `created_at`
+                    FROM `highlights`
+                    """.trimIndent(),
+                )
+                db.execSQL("DROP TABLE `highlights`")
+            }
+        }
+
         /** Migrations in order. Add each one here or upgrades from older installs crash on launch. */
-        val ALL_MIGRATIONS = arrayOf(MIGRATION_3_4, MIGRATION_4_5)
+        val ALL_MIGRATIONS = arrayOf(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
 
         fun getDatabase(context: Context): LawDatabase {
             return INSTANCE ?: synchronized(this) {

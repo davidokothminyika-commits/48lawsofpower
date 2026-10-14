@@ -180,7 +180,7 @@ def build(laws: list[dict], version: int) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--content-dir", type=Path, default=PROJECT / "content")
-    parser.add_argument("--version", type=int, default=5)
+    parser.add_argument("--version", type=int, default=6)
     args = parser.parse_args()
 
     build(load_content(args.content_dir), args.version)

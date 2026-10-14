@@ -12,20 +12,47 @@ import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
 /**
- * A passage the reader marked, optionally with a margin note.
+ * What a mark *is*.
  *
- * Offsets are character indices into ONE section's text, never into a concatenation of several.
- * That matters: the reader lays each block out separately (`law.core`, `law.observance`, and so
- * on), so a single [start]/[end] pair is only meaningful against the [section] it names. Storing a
- * flattened offset would silently mis-highlight the moment the blocks were reordered.
+ * One table rather than three. A bookmark is not a highlight with an empty colour; it is a point
+ * of interest, and the review screen needs "everything I marked in this law, newest first" as a
+ * single query. Splitting by type means three unions in SQL and three places to get the filters
+ * right; a discriminator column keeps one query and one filter vocabulary.
  *
- * Offsets are recorded against the text as it is *today*. The law prose is shipped in the
- * pre-packaged database and is not edited in place, so drift only happens if that content is
- * rewritten in a future release. [clampedTo] is applied at read time so a stale offset degrades to
- * a shortened highlight instead of throwing.
+ * The order matters at insert time and nowhere else. [MIXED] is never stored.
+ */
+enum class AnnotationType(val wire: String) {
+    Highlight("highlight"),
+    Note("note"),
+    Bookmark("bookmark"),
+    ;
+
+    companion object {
+        val MIXED = "mixed"
+
+        fun fromWire(value: String?): AnnotationType? =
+            entries.firstOrNull { it.wire == value }
+    }
+}
+
+/**
+ * A reader's mark on one law.
+ *
+ * ## How a mark is re-found
+ *
+ * Nothing here is a screen coordinate. A coordinate dies the moment the reader changes font size,
+ * rotates, or opens the app on a different phone, so it is never stored.
+ *
+ * Identity is the triple [section] + [start]/[end] into that section's text, and that is
+ * reinforced by [anchorText] - the exact characters the mark covered, copied at creation time.
+ * Offsets alone are enough to paint a highlight but not enough to *explain* it: a stored range of
+ * 412-489 is meaningless in a notes list, and it silently points at the wrong words if the prose
+ * is ever edited. [anchorText] is what gets shown in the review screen and what gets exported.
+ *
+ * If the underlying text changes, [resolve] degrades rather than lying: see there for the rules.
  */
 @Entity(
-    tableName = "highlights",
+    tableName = "annotations",
     foreignKeys = [
         ForeignKey(
             entity = LawEntity::class,
@@ -34,40 +61,52 @@ import kotlinx.coroutines.flow.Flow
             onDelete = ForeignKey.CASCADE,
         ),
     ],
-    indices = [Index("law_id")],
+    indices = [Index("law_id"), Index("type"), Index("created_at")],
 )
-data class HighlightEntity(
+data class AnnotationEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
 
     @ColumnInfo(name = "law_id")
     val lawId: Int,
 
-    /** Which block of the law this lives in. See [SectionKey]. */
+    /** Which block of the law this sits in. See [SectionKey]. */
     val section: String,
 
+    /** Character offsets into [SectionKey.textOf] for this law. Never screen coordinates. */
     val start: Int,
 
     val end: Int,
 
     /**
-     * A stable colour *name*, not a packed ARGB value. Storing the name keeps highlights correct
-     * if the palette is ever re-tuned, and keeps this layer free of Compose types.
+     * The exact text covered, stored verbatim at creation.
+     *
+     * Doubles as the reflow safety net and as the human-readable label in the review list.
      */
-    val color: String,
+    @ColumnInfo(name = "anchor_text")
+    val anchorText: String,
+
+    @ColumnInfo(name = "type")
+    val type: String = AnnotationType.Highlight.wire,
+
+    /** Stable colour name, or empty for a bookmark. See the ui.annotations palette. */
+    val color: String = "",
 
     @ColumnInfo(defaultValue = "''")
     val note: String = "",
 
     @ColumnInfo(name = "created_at")
     val createdAt: Long = 0,
+
+    @ColumnInfo(name = "updated_at", defaultValue = "0")
+    val updatedAt: Long = 0,
 )
 
 /**
- * The text blocks a highlight can point into.
+ * The text blocks a mark can point into.
  *
- * Deliberately a string in the database rather than an ordinal: the reader's section layout is UI
- * and is free to change, whereas stored highlights are not. Names survive reordering.
+ * A string rather than an ordinal: the reader's section layout is UI and may be reordered, while
+ * stored marks are not. Names survive that.
  */
 object SectionKey {
     const val CORE = "core"
@@ -76,7 +115,6 @@ object SectionKey {
     const val TRANSGRESSION = "transgression"
     const val REVERSAL = "reversal"
 
-    /** The text a highlight with this key refers to, for the given law. */
     fun textOf(law: LawEntity, section: String): String = when (section) {
         CORE -> law.core
         SUMMARY -> law.summary
@@ -87,73 +125,182 @@ object SectionKey {
     }
 }
 
-/** Returns a copy whose offsets are guaranteed to sit inside [text], or `null` if fully stale. */
-fun HighlightEntity.clampedTo(text: String): HighlightEntity? {
-    val s = start.coerceIn(0, text.length)
-    val e = end.coerceIn(s, text.length)
-    if (e <= s) return null
-    return if (s == start && e == end) this else copy(start = s, end = e)
+/** Where an [AnnotationEntity] ended up after being re-fitted to the current text. */
+enum class AnchorFit {
+    /** Offsets still address the same characters. */
+    Exact,
+
+    /** Offsets were clamped or nudged, but still land inside the section. */
+    Adjusted,
+
+    /** No usable overlap left. The mark is kept but cannot be painted. */
+    Orphaned,
 }
 
-@Dao
-interface HighlightDao {
-
-    @Query("SELECT * FROM highlights WHERE law_id = :lawId ORDER BY section, start")
-    fun observeForLaw(lawId: Int): Flow<List<HighlightEntity>>
-
-    /** Every highlight with its law's title, for the notes/quote-export screen. */
-    @Query(
-        """
-        SELECT h.*, laws.law_number AS law_number, laws.title AS law_title
-        FROM highlights h JOIN laws ON laws.id = h.law_id
-        ORDER BY h.created_at DESC
-        """,
-    )
-    fun observeAllWithLaw(): Flow<List<HighlightWithLaw>>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(highlight: HighlightEntity): Long
-
-    @Query("UPDATE highlights SET note = :note WHERE id = :id")
-    suspend fun setNote(id: Long, note: String)
-
-    @Query("UPDATE highlights SET color = :color WHERE id = :id")
-    suspend fun setColor(id: Long, color: String)
-
-    @Query("DELETE FROM highlights WHERE id = :id")
-    suspend fun delete(id: Long)
-
-    @Query("DELETE FROM highlights WHERE law_id = :lawId")
-    suspend fun deleteForLaw(lawId: Int)
-
-    /**
-     * An existing highlight in this section that fully contains `[start, end)`.
-     *
-     * Backs the "select it again to remove it" behaviour. Containment rather than overlap on
-     * purpose: partially overlapping ranges are ambiguous, and resolving them here would silently
-     * delete a highlight the reader only grazed.
-     */
-    @Query(
-        """
-        SELECT * FROM highlights
-        WHERE law_id = :lawId AND section = :section
-          AND start <= :start AND `end` >= :end
-        ORDER BY (`end` - start) ASC LIMIT 1
-        """,
-    )
-    suspend fun findCovering(lawId: Int, section: String, start: Int, end: Int): HighlightEntity?
+/**
+ * A mark resolved against the text as it is *today*.
+ *
+ * @property quoted the characters actually covered now, which is what should be shown and
+ *   exported rather than the stored [AnnotationEntity.anchorText].
+ */
+data class ResolvedAnnotation(
+    val annotation: AnnotationEntity,
+    val start: Int,
+    val end: Int,
+    val quoted: String,
+    val fit: AnchorFit,
+) {
+    val isPaintable: Boolean get() = fit != AnchorFit.Orphaned
 }
 
-/** A highlight joined with just enough of its law to label it in a list. */
-data class HighlightWithLaw(
+/**
+ * Re-fits a stored mark to the current text.
+ *
+ * Offsets are the primary anchor and the copied [AnnotationEntity.anchorText] is the check, which
+ * is what makes this survive a re-encode: if the prose is unchanged this is [AnchorFit.Exact]; if
+ * the prose grew or shrank around the mark, the range is clamped to something real and reported
+ * as [AnchorFit.Adjusted]; only a mark with no remaining overlap becomes [AnchorFit.Orphaned],
+ * and it is kept rather than deleted so a reader's work is never silently discarded.
+ */
+fun AnnotationEntity.resolve(text: String): ResolvedAnnotation {
+    if (text.isEmpty()) {
+        return ResolvedAnnotation(this, 0, 0, "", AnchorFit.Orphaned)
+    }
+    val start = start.coerceIn(0, text.length)
+    val end = end.coerceIn(start, text.length)
+    if (end <= start) {
+        return ResolvedAnnotation(this, start, start, "", AnchorFit.Orphaned)
+    }
+
+    // The cheap case: the stored text still sits exactly where it was recorded.
+    if (start + anchorText.length == end &&
+        anchorText.isNotEmpty() &&
+        text.regionMatches(start, anchorText, 0, anchorText.length)
+    ) {
+        return ResolvedAnnotation(this, start, end, anchorText, AnchorFit.Exact)
+    }
+
+    // The prose moved under the mark. Look for the anchor text nearby before giving up, so a
+    // re-encode that shifted everything by a paragraph does not orphan every highlight in the app.
+    val found = anchorText.takeIf { it.length >= MIN_ANCHOR_SEARCH }
+        ?.let { needle -> text.indexOf(needle) }
+        ?.takeIf { it >= 0 && it + anchorText.length <= text.length }
+    if (found != null) {
+        return ResolvedAnnotation(this, found, found + anchorText.length, anchorText, AnchorFit.Adjusted)
+    }
+
+    return ResolvedAnnotation(this, start, end, text.substring(start, end), AnchorFit.Adjusted)
+}
+
+/** Below this length an anchor string is too common in prose to be worth searching for. */
+private const val MIN_ANCHOR_SEARCH = 24
+
+/** An annotation joined with just enough of its law to label it in a review list. */
+data class AnnotationWithLaw(
     val id: Long,
     @ColumnInfo(name = "law_id") val lawId: Int,
     val section: String,
     val start: Int,
     val end: Int,
+    @ColumnInfo(name = "anchor_text") val anchorText: String,
+    val type: String,
     val color: String,
     val note: String,
     @ColumnInfo(name = "created_at") val createdAt: Long,
+    @ColumnInfo(name = "updated_at") val updatedAt: Long,
     @ColumnInfo(name = "law_number") val lawNumber: Int,
     @ColumnInfo(name = "law_title") val lawTitle: String,
 )
+
+/** Filter state for the consolidated review screen. */
+data class AnnotationFilter(
+    val type: String = AnnotationType.MIXED,
+    val color: String = "",
+) {
+    val isUnfiltered: Boolean get() = type == AnnotationType.MIXED && color.isBlank()
+}
+
+@Dao
+interface AnnotationDao {
+
+    @Query("SELECT * FROM annotations WHERE law_id = :lawId ORDER BY section, start")
+    fun observeForLaw(lawId: Int): Flow<List<AnnotationEntity>>
+
+    /**
+     * Every mark, newest first, labelled with its law.
+     *
+     * Filtering is done in SQL rather than in Kotlin. A reader with a few hundred marks would fit
+     * in memory either way, but the query is the only version that stays correct when the list
+     * grows, and it keeps the composable from holding a full table it immediately discards.
+     */
+    @Query(
+        """
+        SELECT a.*, l.law_number AS law_number, l.title AS law_title
+        FROM annotations a JOIN laws l ON l.id = a.law_id
+        WHERE (:type IS NULL OR :type = 'mixed' OR a.type = :type)
+          AND (:color = '' OR a.color = :color)
+        ORDER BY a.created_at DESC, a.id DESC
+        """,
+    )
+    fun observeFiltered(type: String?, color: String?): Flow<List<AnnotationWithLaw>>
+
+    @Query("SELECT * FROM annotations WHERE id = :id LIMIT 1")
+    suspend fun getById(id: Long): AnnotationEntity?
+
+    /**
+     * An existing highlight in this section that fully contains `[start, end)`.
+     *
+     * Containment, not overlap. This backs "select the same passage again to remove it", and a
+     * partial overlap is ambiguous - resolving it here would silently delete a mark the reader
+     * only grazed.
+     */
+    @Query(
+        """
+        SELECT * FROM annotations
+        WHERE law_id = :lawId AND section = :section AND type = 'highlight'
+          AND start <= :start AND `end` >= :end
+        ORDER BY (`end` - start) ASC LIMIT 1
+        """,
+    )
+    suspend fun findCoveringHighlight(lawId: Int, section: String, start: Int, end: Int): AnnotationEntity?
+
+    /** A bookmark is a point, so it duplicates rather than overlapping. */
+    @Query(
+        "SELECT * FROM annotations WHERE law_id = :lawId AND section = :section AND type = 'bookmark' LIMIT 1",
+    )
+    suspend fun findBookmark(lawId: Int, section: String): AnnotationEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(annotation: AnnotationEntity): Long
+
+    @Query("UPDATE annotations SET note = :note, updated_at = :now WHERE id = :id")
+    suspend fun setNote(id: Long, note: String, now: Long)
+
+    @Query("UPDATE annotations SET color = :color, updated_at = :now WHERE id = :id")
+    suspend fun setColor(id: Long, color: String, now: Long)
+
+    @Query("DELETE FROM annotations WHERE id = :id")
+    suspend fun delete(id: Long)
+
+    @Query("DELETE FROM annotations WHERE law_id = :lawId")
+    suspend fun deleteForLaw(lawId: Int)
+
+    /**
+     * Fills a missing anchor from the text the range points into.
+     *
+     * Rows created by `MIGRATION_5_6` arrive with an empty anchor because SQL could not compute
+     * it, and a repair pass on read also fixes any anchor lost another way. Only rows with an
+     * empty anchor are written, so this never rewrites a mark that is already anchored - the
+     * anchor is evidence of where the reader actually marked, not something to regenerate.
+     */
+    @Query("UPDATE annotations SET anchor_text = :anchor WHERE id = :id AND anchor_text = ''")
+    suspend fun backfillAnchorText(id: Long, anchor: String)
+
+    /** One-shot read for the anchor repair pass, which cannot collect the Flow. */
+    @Query("SELECT * FROM annotations WHERE law_id = :lawId AND section = :section ORDER BY start")
+    suspend fun observeForLawOnce(lawId: Int, section: String): List<AnnotationEntity>
+
+    /** True when a law carries any mark, for the subtle table-of-contents indicator. */
+    @Query("SELECT COUNT(*) FROM annotations WHERE law_id = :lawId AND type != 'bookmark'")
+    suspend fun countMarks(lawId: Int): Int
+}
