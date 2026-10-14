@@ -44,7 +44,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.a48lawsofpower.data.AnnotationEntity
 import com.example.a48lawsofpower.data.LawEntity
+import com.example.a48lawsofpower.data.SectionKey
 import com.example.a48lawsofpower.ui.annotations.HighlightColor
+import com.example.a48lawsofpower.ui.components.AnnotationActionBar
 import com.example.a48lawsofpower.ui.components.AnnotatableText
 import com.example.a48lawsofpower.ui.components.ActionIconButton
 import com.example.a48lawsofpower.ui.components.AnalysisBlock
@@ -61,10 +63,10 @@ import com.example.a48lawsofpower.ui.theme.SovereignGold
 import com.example.a48lawsofpower.ui.theme.Spacing
 
 /** The three core sub-sections every law is broken into. */
-private enum class LawSection(val eyebrow: String) {
-    Core("Section I - The Core Law & Judgement"),
-    History("Section II - Transgression & Observance"),
-    Reversal("Section III - Reversal"),
+private enum class LawSection(val eyebrow: String, val key: String) {
+    Core("Section I - The Core Law & Judgement", SectionKey.CORE),
+    History("Section II - Transgression & Observance", SectionKey.CORE),
+    Reversal("Section III - Reversal", SectionKey.REVERSAL),
 }
 
 /**
@@ -166,12 +168,37 @@ fun LawDetailScreen(
                 .onSizeChanged { topBarHeight = it.height.dp },
         )
 
-        SectionIndicator(
-            current = pagerState.currentPage,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .navigationBarsPadding(),
-        )
+        if (selectionEnd > selectionStart) {
+            AnnotationActionBar(
+                selectedColor = pendingColor,
+                onColorChange = { pendingColor = it },
+                onHighlight = {
+                    val key = LawSection.entries[pagerState.currentPage].key
+                    onHighlight(
+                        key,
+                        selectionStart,
+                        selectionEnd,
+                        SectionKey.textOf(law, key),
+                        pendingColor,
+                    )
+                    selectionStart = -1
+                    selectionEnd = -1
+                },
+                onAddNote = { /* the note editor lands with the review screen */ },
+                onCancel = { selectionStart = -1; selectionEnd = -1 },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(horizontal = Spacing.md, vertical = Spacing.md),
+            )
+        } else {
+            SectionIndicator(
+                current = pagerState.currentPage,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding(),
+            )
+        }
     }
 }
 

@@ -28,6 +28,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalTextToolbar
+import androidx.compose.ui.platform.TextToolbar
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
@@ -98,14 +100,19 @@ fun AnnotatableText(
             modifier = Modifier.fillMaxWidth(),
         )
 
-        // No selectionColors parameter on BasicTextField in this version, so the selection look is
-        // supplied through the ambient instead. That is the supported route, and it means the
-        // handles and the selection wash stay in step with the app's accent.
+        // Two ambients, both scoped to the capture layer:
+        //  - selection colours, because BasicTextField in this version has no selectionColors
+        //    parameter. Without this the handles render in the theme's primary, which is now a
+        //    dark crimson and reads as an error state rather than a selection.
+        //  - a no-op text toolbar. The platform toolbar offers Copy / Select all / Read aloud
+        //    and cannot be given app actions, so it is suppressed and replaced by
+        //    [AnnotationActionBar].
         CompositionLocalProvider(
             LocalTextSelectionColors provides TextSelectionColors(
                 handleColor = SovereignGold,
                 backgroundColor = SovereignGold.copy(alpha = 0.28f),
             ),
+            LocalTextToolbar provides NoOpTextToolbar,
         ) {
             BasicTextField(
                 state = fieldState,
@@ -185,4 +192,26 @@ private fun BarAction(label: String, onClick: () -> Unit, tint: Color = Parchmen
             .clickable(onClick = onClick)
             .padding(horizontal = Spacing.xs, vertical = Spacing.xs),
     )
+}
+/**
+ * A toolbar that draws nothing.
+ *
+ * In this Compose version `LocalTextToolbar` holds a [TextToolbar] rather than the older
+ * `(TextToolbar) -> Unit` callback, so suppressing the platform toolbar means providing a real
+ * implementation whose every method is a no-op. The platform toolbar offers Copy / Select all /
+ * Read aloud and cannot be given app actions; [AnnotationActionBar] replaces it.
+ */
+private object NoOpTextToolbar : TextToolbar {
+    override val status: androidx.compose.ui.platform.TextToolbarStatus
+        get() = androidx.compose.ui.platform.TextToolbarStatus.Hidden
+
+    override fun showMenu(
+        rect: androidx.compose.ui.geometry.Rect,
+        onCopyRequested: (() -> Unit)?,
+        onPasteRequested: (() -> Unit)?,
+        onCutRequested: (() -> Unit)?,
+        onSelectAllRequested: (() -> Unit)?,
+    ) = Unit
+
+    override fun hide() = Unit
 }
