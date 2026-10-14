@@ -19,6 +19,7 @@ import com.example.a48lawsofpower.data.LawDatabase
 import com.example.a48lawsofpower.legal.ConsentStatus
 import com.example.a48lawsofpower.legal.ConsentStore
 import com.example.a48lawsofpower.ui.LawsViewModel
+import com.example.a48lawsofpower.ui.annotations.AnnotationsViewModel
 import com.example.a48lawsofpower.ui.legal.LegalViewModel
 import com.example.a48lawsofpower.ui.navigation.AppNavGraph
 import com.example.a48lawsofpower.ui.screens.ConsentGateScreen
@@ -43,6 +44,16 @@ class MainActivity : ComponentActivity() {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 @Suppress("UNCHECKED_CAST")
                 return LegalViewModel(ConsentStore(applicationContext)) as T
+            }
+        }
+    }
+
+    private val annotationsViewModel: AnnotationsViewModel by viewModels {
+        object : ViewModelProvider.Factory {
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                val database = LawDatabase.getDatabase(applicationContext)
+                @Suppress("UNCHECKED_CAST")
+                return AnnotationsViewModel(database.annotationDao(), database.lawDao()) as T
             }
         }
     }
@@ -72,7 +83,11 @@ class MainActivity : ComponentActivity() {
                         ConsentGateScreen(onAccept = legalViewModel::accept)
 
                     ConsentStatus.Granted ->
-                        AppNavGraph(viewModel = viewModel, legalViewModel = legalViewModel)
+                        AppNavGraph(
+                    viewModel = viewModel,
+                    legalViewModel = legalViewModel,
+                    annotationsViewModel = annotationsViewModel,
+                )
                 }
             }
         }

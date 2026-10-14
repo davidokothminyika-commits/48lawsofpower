@@ -42,7 +42,10 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.a48lawsofpower.data.AnnotationEntity
 import com.example.a48lawsofpower.data.LawEntity
+import com.example.a48lawsofpower.ui.annotations.HighlightColor
+import com.example.a48lawsofpower.ui.components.AnnotatableText
 import com.example.a48lawsofpower.ui.components.ActionIconButton
 import com.example.a48lawsofpower.ui.components.AnalysisBlock
 import com.example.a48lawsofpower.ui.components.Hairline
@@ -80,6 +83,8 @@ private val ReaderBottomInset = 88.dp
 @Composable
 fun LawDetailScreen(
     law: LawEntity?,
+    annotations: List<AnnotationEntity>,
+    onHighlight: (section: String, start: Int, end: Int, text: String, color: HighlightColor) -> Unit,
     onBackClick: () -> Unit,
     onToggleBookmark: () -> Unit,
     modifier: Modifier = Modifier,
@@ -96,6 +101,10 @@ fun LawDetailScreen(
 
     val haptics = rememberHaptics()
     val pagerState = rememberPagerState(pageCount = { LawSection.entries.size })
+    // Active selection as start..end in the section it belongs to; -1,-1 means nothing selected.
+    var selectionStart by remember { mutableStateOf(-1) }
+    var selectionEnd by remember { mutableStateOf(-1) }
+    var pendingColor by remember { mutableStateOf(HighlightColor.DEFAULT) }
 
     // Measured, not assumed: the bar's height depends on the device's status bar inset, and a
     // hardcoded value left the section eyebrow printing underneath it on tall-status-bar devices.
@@ -133,7 +142,12 @@ fun LawDetailScreen(
 
             SectionPage(
                 law = law,
+                annotations = annotations,
                 section = LawSection.entries[page],
+                onSelectionChanged = { s, e ->
+                    selectionStart = s
+                    selectionEnd = e
+                },
                 reveal = revealProgress.value,
                 topInset = topBarHeight + Spacing.sm,
                 modifier = Modifier.graphicsLayer {
@@ -164,7 +178,9 @@ fun LawDetailScreen(
 @Composable
 private fun SectionPage(
     law: LawEntity,
+    annotations: List<AnnotationEntity>,
     section: LawSection,
+    onSelectionChanged: (Int, Int) -> Unit,
     reveal: Float,
     topInset: Dp,
     modifier: Modifier = Modifier,
@@ -204,8 +220,10 @@ private fun SectionPage(
                 }
                 if (law.core.isNotBlank()) {
                     item(key = "core-judgement") {
-                        Text(
+                        AnnotatableText(
                             text = law.core,
+                            annotations = annotations,
+                            onSelectionChanged = onSelectionChanged,
                             style = LawTheme.typography.bodyPrimary,
                             color = ParchmentWhite,
                             modifier = Modifier.padding(bottom = Spacing.lg),
@@ -251,10 +269,12 @@ private fun SectionPage(
 
             LawSection.Reversal -> {
                 item(key = "reversal") {
-                    Text(
+                    AnnotatableText(
                         text = law.reversal.ifBlank {
                             "Every law has a reversal. Read it before you act on the law itself."
                         },
+                        annotations = annotations,
+                        onSelectionChanged = onSelectionChanged,
                         style = LawTheme.typography.bodyPrimary,
                         color = ParchmentWhite,
                     )

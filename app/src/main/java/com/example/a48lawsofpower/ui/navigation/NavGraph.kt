@@ -29,6 +29,7 @@ import com.example.a48lawsofpower.legal.LegalDocumentKind
 import com.example.a48lawsofpower.ui.LawsViewModel
 import com.example.a48lawsofpower.ui.RootDestination
 import com.example.a48lawsofpower.ui.components.rememberHaptics
+import com.example.a48lawsofpower.ui.annotations.AnnotationsViewModel
 import com.example.a48lawsofpower.ui.legal.LegalViewModel
 import com.example.a48lawsofpower.ui.screens.CodexScreen
 import com.example.a48lawsofpower.ui.screens.DossierScreen
@@ -58,7 +59,11 @@ import kotlinx.serialization.Serializable
 @Serializable data class LegalDocumentRoute(val kind: String)
 
 @Composable
-fun AppNavGraph(viewModel: LawsViewModel, legalViewModel: LegalViewModel) {
+fun AppNavGraph(
+    viewModel: LawsViewModel,
+    legalViewModel: LegalViewModel,
+    annotationsViewModel: AnnotationsViewModel,
+) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
 
@@ -78,6 +83,9 @@ fun AppNavGraph(viewModel: LawsViewModel, legalViewModel: LegalViewModel) {
     val totalLaws by viewModel.lawCount.collectAsStateWithLifecycle()
     val masteredLaws by viewModel.masteredCount.collectAsStateWithLifecycle()
     val consentRecord by legalViewModel.record.collectAsStateWithLifecycle()
+    val activeLawId = selectedLaw?.id
+    LaunchedEffect(activeLawId) { annotationsViewModel.openLaw(activeLawId) }
+    val lawAnnotations by annotationsViewModel.annotationsForActiveLaw.collectAsStateWithLifecycle()
 
     val activeTab = backStackEntry?.destination.rootTab()
     // Explicit, rather than relying on rootTab() returning null for the splash. During the first
@@ -192,6 +200,13 @@ fun AppNavGraph(viewModel: LawsViewModel, legalViewModel: LegalViewModel) {
 
                     LawDetailScreen(
                         law = selectedLaw,
+                        annotations = lawAnnotations,
+                        onHighlight = { section, start, end, text, color ->
+                            val id = selectedLaw?.id
+                            if (id != null) {
+                                annotationsViewModel.highlight(id, section, start, end, text, color)
+                            }
+                        },
                         onBackClick = {
                             viewModel.clearSelectedLaw()
                             navController.popBackStack()
