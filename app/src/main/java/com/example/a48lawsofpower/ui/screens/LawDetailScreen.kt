@@ -47,6 +47,7 @@ import com.example.a48lawsofpower.data.LawEntity
 import com.example.a48lawsofpower.data.SectionKey
 import com.example.a48lawsofpower.ui.annotations.HighlightColor
 import com.example.a48lawsofpower.ui.components.AnnotationActionBar
+import com.example.a48lawsofpower.ui.components.NoteEditorDialog
 import com.example.a48lawsofpower.ui.components.AnnotatableText
 import com.example.a48lawsofpower.ui.components.ActionIconButton
 import com.example.a48lawsofpower.ui.components.AnalysisBlock
@@ -87,6 +88,7 @@ fun LawDetailScreen(
     law: LawEntity?,
     annotations: List<AnnotationEntity>,
     onHighlight: (section: String, start: Int, end: Int, text: String, color: HighlightColor) -> Unit,
+    onAddNote: (section: String, start: Int, end: Int, text: String, note: String) -> Unit,
     onBackClick: () -> Unit,
     onToggleBookmark: () -> Unit,
     modifier: Modifier = Modifier,
@@ -107,6 +109,9 @@ fun LawDetailScreen(
     var selectionStart by remember { mutableStateOf(-1) }
     var selectionEnd by remember { mutableStateOf(-1) }
     var pendingColor by remember { mutableStateOf(HighlightColor.DEFAULT) }
+    // Section and width of the selection the reader asked to annotate, held while the editor is up.
+    var noteTarget by remember { mutableStateOf<Pair<String, Int>?>(null) }
+    var lastSelectionStart by remember { mutableStateOf(-1) }
 
     // Measured, not assumed: the bar's height depends on the device's status bar inset, and a
     // hardcoded value left the section eyebrow printing underneath it on tall-status-bar devices.
@@ -168,6 +173,31 @@ fun LawDetailScreen(
                 .onSizeChanged { topBarHeight = it.height.dp },
         )
 
+        noteTarget?.let { (section, width) ->
+            val quoted = SectionKey.textOf(law, section).let { t ->
+                // The editor shows what was selected, not the whole block. The anchor is stored
+                // as a range, so the excerpt is recovered by re-reading from the same offsets the
+                // mark will be written with - see AnnotationEntity.anchorText.
+                t.take(width).ifBlank { "" }
+            }
+            NoteEditorDialog(
+                quoted = quoted,
+                lawTitle = law.title,
+                onSave = { note ->
+                    val start = lastSelectionStart
+                    if (start >= 0) {
+                        onAddNote(section, start, start + width, SectionKey.textOf(law, section), note)
+                    }
+                    noteTarget = null
+                },
+                onDismiss = { noteTarget = null },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(Spacing.md),
+            )
+        }
+
         if (selectionEnd > selectionStart) {
             AnnotationActionBar(
                 selectedColor = pendingColor,
@@ -184,7 +214,13 @@ fun LawDetailScreen(
                     selectionStart = -1
                     selectionEnd = -1
                 },
-                onAddNote = { /* the note editor lands with the review screen */ },
+                onAddNote = {
+                    val key = LawSection.entries[pagerState.currentPage].key
+                    lastSelectionStart = selectionStart
+                    noteTarget = key to (selectionEnd - selectionStart)
+                    selectionStart = -1
+                    selectionEnd = -1
+                },
                 onCancel = { selectionStart = -1; selectionEnd = -1 },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)

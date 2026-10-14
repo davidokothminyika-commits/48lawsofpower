@@ -17,7 +17,7 @@ import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
 /** Which of the four bottom tabs the reader is on. */
-enum class RootDestination { Dossier, Strategies, Codex, Legal }
+enum class RootDestination { Dossier, Strategies, Codex, Notes, Legal }
 
 class LawsViewModel(private val lawDao: LawDao) : ViewModel() {
 

@@ -31,6 +31,7 @@ import com.example.a48lawsofpower.ui.RootDestination
 import com.example.a48lawsofpower.ui.components.rememberHaptics
 import com.example.a48lawsofpower.ui.annotations.AnnotationsViewModel
 import com.example.a48lawsofpower.ui.legal.LegalViewModel
+import com.example.a48lawsofpower.ui.screens.AnnotationReviewScreen
 import com.example.a48lawsofpower.ui.screens.CodexScreen
 import com.example.a48lawsofpower.ui.screens.DossierScreen
 import com.example.a48lawsofpower.ui.screens.LawDetailScreen
@@ -50,6 +51,8 @@ import kotlinx.serialization.Serializable
 @Serializable object StrategiesRoute
 
 @Serializable object CodexRoute
+
+@Serializable object NotesRoute
 
 @Serializable object LegalRoute
 
@@ -86,6 +89,9 @@ fun AppNavGraph(
     val activeLawId = selectedLaw?.id
     LaunchedEffect(activeLawId) { annotationsViewModel.openLaw(activeLawId) }
     val lawAnnotations by annotationsViewModel.annotationsForActiveLaw.collectAsStateWithLifecycle()
+    val allAnnotations by annotationsViewModel.review.collectAsStateWithLifecycle()
+    val annotationFilter by annotationsViewModel.filter.collectAsStateWithLifecycle()
+    val lastDeleted by annotationsViewModel.lastDeleted.collectAsStateWithLifecycle()
 
     val activeTab = backStackEntry?.destination.rootTab()
     // Explicit, rather than relying on rootTab() returning null for the splash. During the first
@@ -161,6 +167,23 @@ fun AppNavGraph(
                     )
                 }
 
+                composable<NotesRoute> {
+                    AnnotationReviewScreen(
+                        annotations = allAnnotations,
+                        filter = annotationFilter,
+                        canUndo = lastDeleted != null,
+                        onFilterChange = annotationsViewModel::setFilter,
+                        onOpenLaw = { number -> navController.openLaw(number, viewModel) },
+                        onEditNote = { row ->
+                            viewModel.loadLawDetail(row.lawNumber)
+                            navController.openLaw(row.lawNumber, viewModel)
+                        },
+                        onDelete = annotationsViewModel::delete,
+                        onUndo = annotationsViewModel::undoDelete,
+                        contentPadding = innerPadding,
+                    )
+                }
+
                 composable<LegalRoute> {
                     LegalScreen(
                         record = consentRecord,
@@ -207,6 +230,12 @@ fun AppNavGraph(
                                 annotationsViewModel.highlight(id, section, start, end, text, color)
                             }
                         },
+                        onAddNote = { section, start, end, text, note ->
+                            val id = selectedLaw?.id
+                            if (id != null) {
+                                annotationsViewModel.addNote(id, section, start, end, text, note)
+                            }
+                        },
                         onBackClick = {
                             viewModel.clearSelectedLaw()
                             navController.popBackStack()
@@ -249,6 +278,7 @@ private fun NavDestination?.rootTab(): RootDestination? = when {
     this?.hasRoute<StrategiesRoute>() == true -> RootDestination.Strategies
     this?.hasRoute<CodexRoute>() == true -> RootDestination.Codex
     this?.hasRoute<LegalRoute>() == true -> RootDestination.Legal
+    this?.hasRoute<NotesRoute>() == true -> RootDestination.Notes
     else -> null
 }
 
@@ -258,6 +288,7 @@ private fun NavHostController.switchTab(destination: RootDestination) {
         RootDestination.Strategies -> StrategiesRoute
         RootDestination.Codex -> CodexRoute
         RootDestination.Legal -> LegalRoute
+        RootDestination.Notes -> NotesRoute
     }
     navigate(route) {
         // Pop to the Dossier explicitly, NOT to graph.startDestinationId. The start destination

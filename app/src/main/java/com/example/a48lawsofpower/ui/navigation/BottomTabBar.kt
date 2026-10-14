@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Gavel
 import androidx.compose.material.icons.outlined.Today
 import androidx.compose.material3.Icon
@@ -47,8 +48,9 @@ private data class TabSpec(
 
 private val tabs = listOf(
     TabSpec(RootDestination.Dossier, "Dossier", Icons.AutoMirrored.Outlined.MenuBook),
-    TabSpec(RootDestination.Strategies, "My Strategies", Icons.Outlined.BookmarkBorder),
-    TabSpec(RootDestination.Codex, "Daily Codex", Icons.Outlined.Today),
+    TabSpec(RootDestination.Strategies, "Strategies", Icons.Outlined.BookmarkBorder),
+    TabSpec(RootDestination.Codex, "Codex", Icons.Outlined.Today),
+    TabSpec(RootDestination.Notes, "Notes", Icons.Outlined.EditNote),
     TabSpec(RootDestination.Legal, "Legal", Icons.Outlined.Gavel),
 )
 
