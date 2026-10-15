@@ -43,6 +43,29 @@ val PaperTextMuted = Color(0xFF6B7280)
 /** On-dark text. #F5F5F7, unchanged from the original theme. */
 val InkText = Color(0xFFF5F5F7)
 
+/**
+ * Deeper crimson for the light family.
+ *
+ * The accent has to hold up against a near-black *and* a near-white field, which is the whole reason
+ * it is the only accent. On paper it goes a step darker rather than lighter: #B32626 on #F8FAFC is
+ * about 4.0:1 - fine for the large display numerals, short of the 4.5:1 body minimum for the small
+ * labels that use it. So the light family runs #991C1C for text and reserves the brighter crimson
+ * for fills behind white type.
+ */
+val CrimsonDeep = Color(0xFF7A1616)
+
+/**
+ * Semantic feedback colours, per family.
+ *
+ * These are *text* colours. On dark, #E53E3E and #38A169 clear the background easily; on paper they
+ * do not - #38A169 on #F8FAFC is roughly 2.8:1, which is not legible. Hence a second set rather than
+ * one shared pair.
+ */
+val TransgressionRedDark = Color(0xFFE53E3E)
+val TransgressionRedLight = Color(0xFFB3261E)
+val ObservanceGreenDark = Color(0xFF38A169)
+val ObservanceGreenLight = Color(0xFF1B6B43)
+
 /*
  * The original palette - ObsidianBlack, SovereignGold, ParchmentWhite, ShadowGray, CourtGray,
  * CourtGrayElevated, HairlineBorder, BurnishedBrass, ObservanceGreen, TransgressionRed - still

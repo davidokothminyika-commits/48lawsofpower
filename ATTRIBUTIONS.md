@@ -31,9 +31,19 @@ It is credited here anyway, because a dependency nobody recorded is a dependency
 
 ## Fonts
 
-None yet. The design calls for Playfair Display (headings) and Inter (body); both are SIL Open Font
-License 1.1 and redistributable, and both must be added to this file, with their OFL text, at the
-point the font files are committed. Do not bundle a font without recording it here.
+**Playfair Display** — headings and display numerals.
+Copyright 2017 The Playfair Display Project Authors (https://github.com/clauseggers/Playfair-Display),
+with Reserved Font Name "Playfair Display". Licensed under the SIL Open Font License 1.1; the full
+text is at `third_party/fonts/OFL-PlayfairDisplay.txt`.
+
+**Inter** — body, labels and UI.
+Copyright 2020 The Inter Project Authors (https://github.com/rsms/inter). Licensed under the SIL
+Open Font License 1.1; the full text is at `third_party/fonts/OFL-Inter.txt`.
+
+Both are bundled rather than fetched at runtime, because the app is offline-only and a downloadable
+font would need a network round trip on first render. The files in `app/src/main/res/font` are
+static, Latin-subset instances produced with `fontTools.subset`; they are not the upstream files
+byte for byte, so this notice covers the subsetting as a modification of the originals.
 
 ---
 

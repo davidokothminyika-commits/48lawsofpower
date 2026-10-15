@@ -130,6 +130,10 @@ def build(laws: list[dict], version: int) -> None:
                 law.get("observance", ""),
                 law.get("transgression", ""),
                 law.get("reversal", ""),
+                # Stored newline-delimited, matching LawEntity.takeaways(). Joining defensively so a
+                # law missing from content/takeaways.json produces a blank column rather than a
+                # TypeError that takes the whole asset build down.
+                "\n".join(t.strip() for t in law.get("keyTakeaways", []) if t.strip()),
                 0,
                 0,
             )
@@ -146,6 +150,7 @@ def build(laws: list[dict], version: int) -> None:
             "observance",
             "transgression",
             "reversal",
+            "key_takeaways",
             "bookmarked",
             "read",
         ]
@@ -180,7 +185,7 @@ def build(laws: list[dict], version: int) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--content-dir", type=Path, default=PROJECT / "content")
-    parser.add_argument("--version", type=int, default=6)
+    parser.add_argument("--version", type=int, default=7)
     args = parser.parse_args()
 
     build(load_content(args.content_dir), args.version)

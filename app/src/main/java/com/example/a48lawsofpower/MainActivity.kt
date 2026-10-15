@@ -22,8 +22,11 @@ import com.example.a48lawsofpower.ui.LawsViewModel
 import com.example.a48lawsofpower.ui.annotations.AnnotationsViewModel
 import com.example.a48lawsofpower.ui.legal.LegalViewModel
 import com.example.a48lawsofpower.ui.navigation.AppNavGraph
+import com.example.a48lawsofpower.ui.profile.ProfileViewModel
 import com.example.a48lawsofpower.ui.screens.ConsentGateScreen
 import com.example.a48lawsofpower.ui.screens.LoadingState
+import com.example.a48lawsofpower.ui.settings.SettingsStore
+import com.example.a48lawsofpower.ui.settings.SettingsViewModel
 import com.example.a48lawsofpower.ui.theme._48LawsOfPowerTheme
 
 class MainActivity : ComponentActivity() {
@@ -48,6 +51,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val profileViewModel: ProfileViewModel by viewModels {
+        object : ViewModelProvider.Factory {
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                val database = LawDatabase.getDatabase(applicationContext)
+                @Suppress("UNCHECKED_CAST")
+                return ProfileViewModel(database.progressDao()) as T
+            }
+        }
+    }
+
     private val annotationsViewModel: AnnotationsViewModel by viewModels {
         object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -58,11 +71,22 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val settingsViewModel: SettingsViewModel by viewModels {
+        object : ViewModelProvider.Factory {
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                @Suppress("UNCHECKED_CAST")
+                return SettingsViewModel(SettingsStore(applicationContext)) as T
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            _48LawsOfPowerTheme {
+            val themeMode by settingsViewModel.themeMode.collectAsStateWithLifecycle()
+
+            _48LawsOfPowerTheme(themeMode = themeMode) {
                 val consent by legalViewModel.consent.collectAsStateWithLifecycle()
 
                 // The gate lives here rather than inside the nav graph so that nothing behind it is
@@ -84,10 +108,12 @@ class MainActivity : ComponentActivity() {
 
                     ConsentStatus.Granted ->
                         AppNavGraph(
-                    viewModel = viewModel,
-                    legalViewModel = legalViewModel,
-                    annotationsViewModel = annotationsViewModel,
-                )
+                            viewModel = viewModel,
+                            legalViewModel = legalViewModel,
+                            annotationsViewModel = annotationsViewModel,
+                            settingsViewModel = settingsViewModel,
+                            profileViewModel = profileViewModel,
+                        )
                 }
             }
         }

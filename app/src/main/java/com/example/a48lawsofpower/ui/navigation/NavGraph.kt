@@ -1,6 +1,8 @@
 package com.example.a48lawsofpower.ui.navigation
 
 import androidx.compose.foundation.background
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -11,8 +13,12 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -31,10 +37,15 @@ import com.example.a48lawsofpower.ui.RootDestination
 import com.example.a48lawsofpower.ui.components.rememberHaptics
 import com.example.a48lawsofpower.ui.annotations.AnnotationsViewModel
 import com.example.a48lawsofpower.ui.legal.LegalViewModel
+import com.example.a48lawsofpower.ui.settings.SettingsViewModel
 import com.example.a48lawsofpower.ui.screens.AnnotationReviewScreen
 import com.example.a48lawsofpower.ui.screens.CodexScreen
 import com.example.a48lawsofpower.ui.screens.DossierScreen
 import com.example.a48lawsofpower.ui.screens.LawDetailScreen
+import com.example.a48lawsofpower.ui.screens.ProfileScreen
+import com.example.a48lawsofpower.ui.screens.LibraryFilter
+import com.example.a48lawsofpower.ui.screens.LibraryScreen
+import com.example.a48lawsofpower.ui.profile.ProfileViewModel
 import com.example.a48lawsofpower.ui.screens.LegalDocumentScreen
 import com.example.a48lawsofpower.ui.screens.LegalScreen
 import com.example.a48lawsofpower.ui.screens.SplashScreen
@@ -54,6 +65,10 @@ import kotlinx.serialization.Serializable
 
 @Serializable object NotesRoute
 
+@Serializable object LibraryRoute
+
+@Serializable object ProfileRoute
+
 @Serializable object LegalRoute
 
 @Serializable data class DetailRoute(val lawNumber: Int)
@@ -66,11 +81,14 @@ fun AppNavGraph(
     viewModel: LawsViewModel,
     legalViewModel: LegalViewModel,
     annotationsViewModel: AnnotationsViewModel,
+    settingsViewModel: SettingsViewModel,
+    profileViewModel: ProfileViewModel,
 ) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
 
     val laws by viewModel.filteredLaws.collectAsStateWithLifecycle()
+    val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
     val categories by viewModel.categories.collectAsStateWithLifecycle()
     val selectedCategory by viewModel.selectedCategory.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
@@ -93,17 +111,28 @@ fun AppNavGraph(
     val annotationFilter by annotationsViewModel.filter.collectAsStateWithLifecycle()
     val lastDeleted by annotationsViewModel.lastDeleted.collectAsStateWithLifecycle()
 
+    // Library filter and reading stats are screen-local: neither is a navigation-level concern, and
+    // holding them here keeps a new destination from needing another parameter.
+    var libraryFilter by rememberSaveable { mutableStateOf(LibraryFilter.All) }
+    val themeMode by settingsViewModel.themeMode.collectAsStateWithLifecycle()
+    val readingStats by profileViewModel.stats.collectAsStateWithLifecycle()
+    // Annotated-ness is not on LawOverview, so the ids are lifted out of the review list once and
+    // shared by the Library rows and the Profile counts.
+    val annotatedLawIds = remember(allAnnotations) { allAnnotations.map { it.lawId }.toSet() }
+
     val activeTab = backStackEntry?.destination.rootTab()
-    // Explicit, rather than relying on rootTab() returning null for the splash. During the first
-    // frame after a cold start currentBackStackEntryAsState() can still report the entry restored
-    // from saved state while the NavHost is already drawing the splash, which put the bottom bar
-    // over the Get Started button and swallowed taps meant for it.
-    val onSplash = backStackEntry?.destination?.hasRoute<SplashRoute>() == true
+    // An explicit flag rather than `backStackEntry.destination.hasRoute<SplashRoute>()`. That
+    // version still let the bar over the splash: during the first frames after a cold start
+    // currentBackStackEntryAsState() can report an entry restored from saved state while the NavHost
+    // is already drawing the splash, so both the "is it the splash" check and the tab lookup read
+    // the same stale entry and disagree with what is actually on screen. Tracking that the reader
+    // has left the splash cannot go stale that way.
+    var leftSplash by rememberSaveable { mutableStateOf(false) }
     val haptics = rememberHaptics()
 
     Scaffold(
         bottomBar = {
-            if (activeTab != null && !onSplash) {
+            if (leftSplash && activeTab != null) {
                 CodexBottomBar(
                     current = activeTab,
                     onSelect = { destination ->
@@ -120,12 +149,23 @@ fun AppNavGraph(
                 startDestination = SplashRoute,
                 modifier = Modifier.fillMaxSize(),
             ) {
-                composable<SplashRoute> {
+                composable<SplashRoute>(
+                    // No transition. The splash is dismissed by a deliberate tap, and cross-fading
+                    // it meant it stayed visible underneath the Dossier while the tab bar popped in
+                    // over it - two things on screen at once, neither finished. It now leaves on the
+                    // frame of the tap and the skeleton takes over immediately, which is also what
+                    // makes the skeletons readable rather than a flash.
+                    enterTransition = { EnterTransition.None },
+                    exitTransition = { ExitTransition.None },
+                    popExitTransition = { ExitTransition.None },
+                    popEnterTransition = { EnterTransition.None },
+                ) {
                     // Popped, not pushed onto: the Dossier must not sit behind the splash, or a
                     // back gesture from it would return to a dead entry screen. popUpTo the
                     // splash itself, which removes it from the back stack entirely.
                     SplashScreen(
                         onGetStarted = {
+                            leftSplash = true
                             navController.navigate(DossierRoute) {
                                 popUpTo(SplashRoute) { inclusive = true }
                             }
@@ -136,6 +176,7 @@ fun AppNavGraph(
                 composable<DossierRoute> {
                     DossierScreen(
                         laws = laws,
+                        isLoading = isLoading,
                         featured = featured,
                         categories = categories,
                         selectedCategory = selectedCategory,
@@ -180,6 +221,37 @@ fun AppNavGraph(
                         },
                         onDelete = annotationsViewModel::delete,
                         onUndo = annotationsViewModel::undoDelete,
+                        contentPadding = innerPadding,
+                    )
+                }
+
+                composable<LibraryRoute> {
+                    LibraryScreen(
+                        laws = laws,
+                        filter = libraryFilter,
+                        onFilterChange = { libraryFilter = it },
+                        annotatedLawIds = annotatedLawIds,
+                        onLawClick = { number -> navController.openLaw(number, viewModel) },
+                        onToggleBookmark = viewModel::toggleBookmark,
+                        contentPadding = innerPadding,
+                    )
+                }
+
+                composable<ProfileRoute> {
+                    ProfileScreen(
+                        stats = readingStats,
+                        totalLaws = totalLaws,
+                        masteredLaws = masteredLaws,
+                        savedCount = bookmarked.size,
+                        annotatedCount = allAnnotations.size,
+                        annotatedLaws = annotatedLawIds.size,
+                        themeMode = themeMode,
+                        onThemeModeChange = settingsViewModel::setThemeMode,
+                        onOpenStrategies = {
+                            navController.navigate(StrategiesRoute) { launchSingleTop = true }
+                        },
+                        onOpenNotes = { navController.navigate(NotesRoute) { launchSingleTop = true } },
+                        onOpenLegal = { navController.navigate(LegalRoute) { launchSingleTop = true } },
                         contentPadding = innerPadding,
                     )
                 }
@@ -241,6 +313,11 @@ fun AppNavGraph(
                             navController.popBackStack()
                         },
                         onToggleBookmark = { viewModel.toggleBookmark(route.lawNumber) },
+                        onToggleRead = {
+                            // Optimistic read is mirrored here from the loaded law, so the toggle is
+                            // reversible rather than a one-way stamp.
+                            selectedLaw?.let { law -> viewModel.setRead(law.lawNumber, !law.read) }
+                        },
                     )
                 }
             }
@@ -275,20 +352,18 @@ private fun NavHostController.openLaw(lawNumber: Int, viewModel: LawsViewModel) 
 /** The reader and the legal documents run full-bleed, so the bar only exists on the four root tabs. */
 private fun NavDestination?.rootTab(): RootDestination? = when {
     this?.hasRoute<DossierRoute>() == true -> RootDestination.Dossier
-    this?.hasRoute<StrategiesRoute>() == true -> RootDestination.Strategies
     this?.hasRoute<CodexRoute>() == true -> RootDestination.Codex
-    this?.hasRoute<LegalRoute>() == true -> RootDestination.Legal
-    this?.hasRoute<NotesRoute>() == true -> RootDestination.Notes
+    this?.hasRoute<LibraryRoute>() == true -> RootDestination.Library
+    this?.hasRoute<ProfileRoute>() == true -> RootDestination.Profile
     else -> null
 }
 
 private fun NavHostController.switchTab(destination: RootDestination) {
     val route: Any = when (destination) {
         RootDestination.Dossier -> DossierRoute
-        RootDestination.Strategies -> StrategiesRoute
         RootDestination.Codex -> CodexRoute
-        RootDestination.Legal -> LegalRoute
-        RootDestination.Notes -> NotesRoute
+        RootDestination.Library -> LibraryRoute
+        RootDestination.Profile -> ProfileRoute
     }
     navigate(route) {
         // Pop to the Dossier explicitly, NOT to graph.startDestinationId. The start destination

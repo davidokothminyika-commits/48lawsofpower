@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import com.example.a48lawsofpower.data.LawOverview
 import com.example.a48lawsofpower.ui.LawsViewModel
 import com.example.a48lawsofpower.ui.components.LawCardPreview
+import com.example.a48lawsofpower.ui.components.SkeletonLawCard
 import com.example.a48lawsofpower.ui.components.TogglePill
 import com.example.a48lawsofpower.ui.components.rememberHaptics
 import com.example.a48lawsofpower.ui.theme.CourtGray
@@ -49,6 +50,9 @@ import com.example.a48lawsofpower.ui.theme.ParchmentWhite
 import com.example.a48lawsofpower.ui.theme.ShadowGray
 import com.example.a48lawsofpower.ui.theme.SovereignGold
 import com.example.a48lawsofpower.ui.theme.Spacing
+
+/** Roughly one screen of cards. More than this is never visible at once. */
+private const val SKELETON_ROWS = 6
 
 private object DossierItemType {
     const val Header = "header"
@@ -71,6 +75,7 @@ private object DossierItemType {
 @Composable
 fun DossierScreen(
     laws: List<LawOverview>,
+    isLoading: Boolean,
     featured: LawOverview?,
     categories: List<String>,
     selectedCategory: String?,
@@ -159,34 +164,43 @@ fun DossierScreen(
             }
         }
 
-        if (laws.isEmpty()) {
-            item(key = "empty", contentType = DossierItemType.Filler) {
-                EmptyState(
-                    title = if (searching) "No match" else "Nothing filed here",
-                    body = if (searching) {
-                        "No law answers to that search."
-                    } else {
-                        "No law in the dossier answers to that filter."
+        // Exactly one of: placeholders, the empty state, or the laws. These were once siblings,
+        // which meant a loading list drew skeletons *and* real cards at once - visible as a screen
+        // with six grey rows stacked above the actual content.
+        if (isLoading) {
+            items(SKELETON_ROWS, key = { "skeleton-$it" }) {
+                SkeletonLawCard()
+            }
+        } else {
+            if (laws.isEmpty()) {
+                item(key = "empty", contentType = DossierItemType.Filler) {
+                    EmptyState(
+                        title = if (searching) "No match" else "Nothing filed here",
+                        body = if (searching) {
+                            "No law answers to that search."
+                        } else {
+                            "No law in the dossier answers to that filter."
+                        },
+                    )
+                }
+            }
+
+            items(
+                items = laws,
+                key = { it.id },
+                contentType = { DossierItemType.Law },
+            ) { law ->
+                LawCardPreview(
+                    law = law,
+                    onClick = { onLawClick(law.lawNumber) },
+                    onToggleBookmark = { onToggleBookmark(law.lawNumber) },
+                    onLongClick = {
+                        haptics.impactHeavy()
+                        onToggleBookmark(law.lawNumber)
                     },
+                    modifier = Modifier.padding(horizontal = Spacing.md, vertical = 7.dp),
                 )
             }
-        }
-
-        items(
-            items = laws,
-            key = { it.id },
-            contentType = { DossierItemType.Law },
-        ) { law ->
-            LawCardPreview(
-                law = law,
-                onClick = { onLawClick(law.lawNumber) },
-                onToggleBookmark = { onToggleBookmark(law.lawNumber) },
-                onLongClick = {
-                    haptics.impactHeavy()
-                    onToggleBookmark(law.lawNumber)
-                },
-                modifier = Modifier.padding(horizontal = Spacing.md, vertical = 7.dp),
-            )
         }
 
         item(key = "tail", contentType = DossierItemType.Filler) {

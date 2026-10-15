@@ -32,6 +32,7 @@ MIGRATIONS = [
     ("MIGRATION_3_4", 3, 4),
     ("MIGRATION_4_5", 4, 5),
     ("MIGRATION_5_6", 5, 6),
+    ("MIGRATION_6_7", 6, 7),
 ]
 
 

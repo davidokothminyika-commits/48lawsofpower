@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
@@ -21,6 +22,8 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material3.MaterialTheme
@@ -44,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.a48lawsofpower.data.AnnotationEntity
 import com.example.a48lawsofpower.data.LawEntity
+import com.example.a48lawsofpower.data.takeaways
 import com.example.a48lawsofpower.data.SectionKey
 import com.example.a48lawsofpower.ui.annotations.HighlightColor
 import com.example.a48lawsofpower.ui.components.AnnotationActionBar
@@ -63,8 +67,9 @@ import com.example.a48lawsofpower.ui.theme.ShadowGray
 import com.example.a48lawsofpower.ui.theme.SovereignGold
 import com.example.a48lawsofpower.ui.theme.Spacing
 
-/** The three core sub-sections every law is broken into. */
+/** The four core sub-sections every law is broken into. */
 private enum class LawSection(val eyebrow: String, val key: String) {
+    Takeaways("Key Takeaways", SectionKey.CORE),
     Core("Section I - The Core Law & Judgement", SectionKey.CORE),
     History("Section II - Transgression & Observance", SectionKey.CORE),
     Reversal("Section III - Reversal", SectionKey.REVERSAL),
@@ -91,6 +96,7 @@ fun LawDetailScreen(
     onAddNote: (section: String, start: Int, end: Int, text: String, note: String) -> Unit,
     onBackClick: () -> Unit,
     onToggleBookmark: () -> Unit,
+    onToggleRead: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (law == null) {
@@ -168,6 +174,7 @@ fun LawDetailScreen(
             law = law,
             onBackClick = onBackClick,
             onToggleBookmark = onToggleBookmark,
+            onToggleRead = onToggleRead,
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .onSizeChanged { topBarHeight = it.height.dp },
@@ -269,6 +276,40 @@ private fun SectionPage(
         }
 
         when (section) {
+            LawSection.Takeaways -> {
+                val points = law.takeaways()
+                if (points.isEmpty()) {
+                    // Reachable on an install that upgraded from schema 6: the column exists but the
+                    // pre-packaged asset, which carries the text, is only copied when the database
+                    // file is absent. Reinstalling restores it.
+                    item(key = "takeaways-empty") {
+                        EmptyState(
+                            title = "No takeaways yet",
+                            body = "Reinstall the app to load the takeaways for this law.",
+                        )
+                    }
+                } else {
+                    items(points.size, key = { points[it] }) { index ->
+                        val point = points[index]
+                        Row(modifier = Modifier.padding(bottom = Spacing.md)) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(top = 8.dp)
+                                    .size(6.dp)
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(SovereignGold),
+                            )
+                            Spacer(Modifier.width(Spacing.md))
+                            Text(
+                                text = point,
+                                style = LawTheme.typography.bodyPrimary,
+                                color = ParchmentWhite,
+                            )
+                        }
+                    }
+                }
+            }
+
             LawSection.Core -> {
                 item(key = "core-title") {
                     Text(
@@ -352,8 +393,13 @@ private fun ReaderTopBar(
     law: LawEntity,
     onBackClick: () -> Unit,
     onToggleBookmark: () -> Unit,
+    onToggleRead: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Resolved out here because drawWithContent runs in DrawScope, which is not @Composable and so
+    // cannot read a theme value itself.
+    val underline = SovereignGold.copy(alpha = 0.35f)
+
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -361,7 +407,7 @@ private fun ReaderTopBar(
             .drawWithContent {
                 drawContent()
                 drawLine(
-                    color = SovereignGold.copy(alpha = 0.35f),
+                    color = underline,
                     start = Offset(0f, size.height),
                     end = Offset(size.width, size.height),
                     strokeWidth = 1.dp.toPx(),
@@ -381,6 +427,16 @@ private fun ReaderTopBar(
             text = "LAW ${law.lawNumber.toString().padStart(2, '0')}",
             style = LawTheme.typography.lawIndex,
             color = ShadowGray,
+        )
+        ActionIconButton(
+            icon = if (law.read) Icons.Outlined.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
+            contentDescription = if (law.read) {
+                "Marked as read - tap to undo"
+            } else {
+                "Mark as read"
+            },
+            active = law.read,
+            onClick = onToggleRead,
         )
         ActionIconButton(
             icon = if (law.bookmarked) Icons.Outlined.Bookmark else Icons.Outlined.BookmarkBorder,

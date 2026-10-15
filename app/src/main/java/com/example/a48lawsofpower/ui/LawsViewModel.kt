@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -17,12 +18,38 @@ import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
 /** Which of the four bottom tabs the reader is on. */
-enum class RootDestination { Dossier, Strategies, Codex, Notes, Legal }
+enum class RootDestination { Dossier, Library, Codex, Profile }
+
+/**
+ * Loading state for a given number of loaded laws.
+ *
+ * Named and extracted so the direction of the comparison is unambiguous at the one call site that
+ * matters. The screen branches `if (isLoading) skeletons else laws`, so an inverted predicate here
+ * does not degrade gracefully - it shows the skeleton forever and the content never appears.
+ */
+internal fun isLoadingFor(lawCount: Int): Boolean = lawCount == 0
 
 class LawsViewModel(private val lawDao: LawDao) : ViewModel() {
 
     private val allLaws: StateFlow<List<LawOverview>> = lawDao.observeAllLaws()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /**
+ * True while the first read has not returned any laws.
+ *
+ * Exists because "no laws yet" and "no laws match" are different states and the list screen used to
+ * render the second for both - so a cold start flashed "Nothing filed here" before the real content
+ * landed. `allLaws` starts on an empty list because that is the only sensible default for a
+ * StateFlow, and the pre-packaged asset always carries 48 laws, so "empty" means "not read yet".
+ *
+ * The predicate is [isLoadingFor] rather than an inline `isEmpty()` so the direction of the test is
+ * visible at the point of use. The first version of this was `map { it.isNotEmpty() }`, which is the
+ * exact inverse: the skeleton then rendered whenever the laws *had* arrived and the list never drew.
+ */
+val isLoading: StateFlow<Boolean> = allLaws
+    .map { isLoadingFor(it.size) }
+    .distinctUntilChanged()
+    .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
     private val _selectedCategory = MutableStateFlow<String?>(null)
     val selectedCategory: StateFlow<String?> = _selectedCategory.asStateFlow()
@@ -113,13 +140,21 @@ class LawsViewModel(private val lawDao: LawDao) : ViewModel() {
         if (_selectedLaw.value?.lawNumber == lawNumber) return
 
         viewModelScope.launch {
+            // Deliberately does NOT mark the law read. Opening a law used to be enough, which made
+            // "mastered" mean "tapped once" and quietly inflated the streak; the reader now sets it
+            // explicitly with [setRead], so the count reflects a decision rather than a tap.
             _selectedLaw.value = lawDao.getLawByNumber(lawNumber)
-            val law = _selectedLaw.value
-            // Auto-mark as mastered once the reader actually reaches the law.
-            if (law != null && !law.read) {
-                lawDao.markLawAsRead(lawNumber, true)
-            }
         }
+    }
+
+    /** Explicit mastery control. Deliberate, and reversible. */
+    fun setRead(lawNumber: Int, read: Boolean) {
+        // Optimistic: the button has to respond to the tap, and the row behind it is refreshed by
+        // the `read` Flow anyway once the write lands.
+        if (_selectedLaw.value?.lawNumber == lawNumber) {
+            _selectedLaw.value = _selectedLaw.value?.copy(read = read)
+        }
+        viewModelScope.launch { lawDao.markLawAsRead(lawNumber, read) }
     }
 
     fun toggleBookmark(lawNumber: Int) {

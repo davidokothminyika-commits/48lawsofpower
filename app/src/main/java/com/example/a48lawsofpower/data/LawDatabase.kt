@@ -27,7 +27,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * Bump this, add the matching `MIGRATION_n_n`, run the build so Room exports `<version>.json`,
  * then regenerate the asset with `tools/build_laws_db.py`.
  */
-const val LAW_DATABASE_SCHEMA_VERSION = 6
+const val LAW_DATABASE_SCHEMA_VERSION = 7
 
 @Database(
     entities = [LawEntity::class, AnnotationEntity::class, ReadingDayEntity::class],
@@ -197,8 +197,29 @@ abstract class LawDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Adds the `key_takeaways` column.
+         *
+         * A plain `ALTER TABLE ... ADD COLUMN` rather than the create-copy-drop dance used by
+         * `MIGRATION_3_4`: nothing is being dropped or renamed, and an added NOT NULL column with a
+         * declared default is exactly the case SQLite handles in place. The default is the empty
+         * string, so an install that upgrades in place starts with no takeaways rather than crashing.
+         *
+         * That empty state is the reason the reader has to tolerate a blank takeaways block: a
+         * reader who upgrades will have the full text again only after a reinstall pulls the
+         * pre-packaged asset, because Room copies that asset only when the database file is absent.
+         */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `laws` ADD COLUMN `key_takeaways` TEXT NOT NULL DEFAULT ''",
+                )
+            }
+        }
+
         /** Migrations in order. Add each one here or upgrades from older installs crash on launch. */
-        val ALL_MIGRATIONS = arrayOf(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+        val ALL_MIGRATIONS =
+            arrayOf(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
 
         fun getDatabase(context: Context): LawDatabase {
             return INSTANCE ?: synchronized(this) {
