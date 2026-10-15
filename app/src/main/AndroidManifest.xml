@@ -2,7 +2,19 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <uses-permission android:name="android.permission.INTERNET" />
+    <!--
+      No INTERNET permission. Nothing in this app opens a socket: the laws ship in a pre-packaged
+      SQLite asset and every other feature reads from local storage. The permission was left over
+      from scaffolding and directly contradicted the Privacy Policy, which tells the reader
+      nothing ever leaves the device. A future feature that genuinely needs the network must add
+      it back here AND rewrite that policy in the same change - see LegalDocuments.kt.
+
+      tools:node="remove" is required, not decorative. Coil contributes both of these to the
+      merged manifest, so deleting our own declaration does not remove them - without this the
+      APK still ships with network access the app never uses.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
 
     <application
         android:allowBackup="true"
