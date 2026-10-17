@@ -1,5 +1,7 @@
 package com.example.a48lawsofpower.ui.screens
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -8,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -18,17 +21,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
-import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.Gavel
-import androidx.compose.material.icons.outlined.LightMode
-import androidx.compose.material.icons.outlined.PersonOutline
-import androidx.compose.material.icons.outlined.Smartphone
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,17 +40,21 @@ import com.example.a48lawsofpower.data.ReadingStats
 import com.example.a48lawsofpower.ui.components.Hairline
 import com.example.a48lawsofpower.ui.components.TogglePill
 import com.example.a48lawsofpower.ui.components.rememberHaptics
+import com.example.a48lawsofpower.ui.profile.RecentDay
 import com.example.a48lawsofpower.ui.theme.CourtGray
+import com.example.a48lawsofpower.ui.theme.CourtGrayElevated
 import com.example.a48lawsofpower.ui.theme.Inter
 import com.example.a48lawsofpower.ui.theme.LawTheme
 import com.example.a48lawsofpower.ui.theme.Metrics
+import com.example.a48lawsofpower.ui.theme.Motion
 import com.example.a48lawsofpower.ui.theme.ObservanceGreen
 import com.example.a48lawsofpower.ui.theme.ParchmentWhite
 import com.example.a48lawsofpower.ui.theme.ShadowGray
 import com.example.a48lawsofpower.ui.theme.SovereignGold
 import com.example.a48lawsofpower.ui.theme.Spacing
 import com.example.a48lawsofpower.ui.theme.ThemeMode
-import com.example.a48lawsofpower.ui.theme.TransgressionRed
+import com.example.a48lawsofpower.ui.theme.reducedMotion
+import java.time.LocalDate
 
 /**
  * Profile: the reader's standing, the things they have kept, and the app's settings.
@@ -65,6 +69,7 @@ import com.example.a48lawsofpower.ui.theme.TransgressionRed
 @Composable
 fun ProfileScreen(
     stats: ReadingStats,
+    week: List<RecentDay>,
     totalLaws: Int,
     masteredLaws: Int,
     savedCount: Int,
@@ -87,7 +92,7 @@ fun ProfileScreen(
         contentPadding = contentPadding,
     ) {
         item(key = "header") {
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(
@@ -96,43 +101,23 @@ fun ProfileScreen(
                         end = Spacing.md,
                         bottom = Spacing.md,
                     ),
-                verticalAlignment = Alignment.CenterVertically,
             ) {
-                // The avatar. There is no account, so it carries no identity and no initials - it is
-                // a mark that this screen is about the reader, not a portrait of one.
-                Box(
-                    modifier = Modifier
-                        .size(56.dp)
-                        .clip(RoundedCornerShape(28.dp))
-                        .background(CourtGray),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.PersonOutline,
-                        contentDescription = null,
-                        tint = SovereignGold,
-                        modifier = Modifier.size(28.dp),
-                    )
-                }
-                Spacer(Modifier.width(Spacing.md))
-                Column(Modifier.weight(1f)) {
-                    Text("PROFILE", style = LawTheme.typography.eyebrow, color = ShadowGray)
-                    Spacer(Modifier.height(Spacing.xs))
-                    Text(
-                        text = "Your Progress",
-                        style = LawTheme.typography.lawNumber.copy(fontSize = 28.sp, lineHeight = 34.sp),
-                        color = ParchmentWhite,
-                    )
-                }
+                Text("PROFILE", style = LawTheme.typography.eyebrow, color = ShadowGray)
+                Spacer(Modifier.height(Spacing.xs))
+                Text(
+                    text = "Your Progress",
+                    style = LawTheme.typography.lawNumber.copy(fontSize = 28.sp, lineHeight = 34.sp),
+                    color = ParchmentWhite,
+                )
             }
         }
 
         item(key = "stats") {
             StatRow(
                 stats = stats,
+                week = week,
                 totalLaws = totalLaws,
                 masteredLaws = masteredLaws,
-                annotatedCount = annotatedCount,
                 modifier = Modifier.padding(horizontal = Spacing.md),
             )
         }
@@ -186,20 +171,6 @@ fun ProfileScreen(
             }
         }
 
-        item(key = "theme-note") {
-            Text(
-                text = "The reader is built for the dark family, but both are supported end to end. " +
-                    "Highlighting and note colours stay fixed in both, so your marks never change.",
-                style = LawTheme.typography.bodySecondary,
-                color = ShadowGray,
-                modifier = Modifier.padding(
-                    start = Spacing.md,
-                    end = Spacing.md,
-                    top = Spacing.sm,
-                ),
-            )
-        }
-
         item(key = "legal-eyebrow") {
             SectionEyebrow("LEGAL", Modifier.padding(top = Spacing.lg))
         }
@@ -236,12 +207,27 @@ private fun SectionEyebrow(text: String, modifier: Modifier = Modifier) {
     )
 }
 
+/**
+ * The reader's standing, in three tiers rather than one flat grid of six numbers.
+ *
+ * The previous version was a 2x3 of equal-weight figures, which meant mastery, streak, and days read
+ * all looked equally like the thing the reader cared about. None of them did:
+ *  - **Mastery** is the arc of the whole project, so it gets a bar and a fraction - "12/48" as bare
+ *    text gives no sense of how far along that is.
+ *  - **The week** makes the streak concrete. A streak of "4" is an abstraction; four filled cells
+ *    with three gaps in them is a picture of an actual week, and it is the only place the reader can
+ *    see that today is still unfilled.
+ *  - **The rest** is reference and sits at the bottom in ordinary type.
+ *
+ * "Annotations" was dropped from here entirely: the Notes row below already says the same number
+ * with more context, and two identical figures on one screen reads as an error.
+ */
 @Composable
 private fun StatRow(
     stats: ReadingStats,
+    week: List<RecentDay>,
     totalLaws: Int,
     masteredLaws: Int,
-    annotatedCount: Int,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -251,68 +237,148 @@ private fun StatRow(
             .background(CourtGray)
             .padding(Spacing.md),
     ) {
-        Row {
-            Stat("Mastered", "$masteredLaws/$totalLaws", SovereignGold, Modifier.weight(1f))
+        MasteryBar(mastered = masteredLaws, total = totalLaws)
+        Spacer(Modifier.height(Spacing.lg))
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Stat("Streak", "${stats.currentStreak}d", ObservanceGreen, Modifier.weight(1f))
             Stat("Best", "${stats.longestStreak}d", ShadowGray, Modifier.weight(1f))
-        }
-        Spacer(Modifier.height(Spacing.md))
-        Hairline()
-        Spacer(Modifier.height(Spacing.md))
-        Row {
             Stat("Days read", "${stats.totalDays}", ParchmentWhite, Modifier.weight(1f))
-            Stat("Annotations", "$annotatedCount", ParchmentWhite, Modifier.weight(1f))
-            // Minutes, not laws. A day now counts toward the streak on reading time rather than on
-            // laws opened, so "today" has to be measured the same way or the two figures contradict
-            // each other on screen.
-            Stat(
-                label = "Minutes today",
-                value = "${stats.totalMinutes}",
-                tint = if (stats.todayQualifies) ObservanceGreen else ShadowGray,
-                modifier = Modifier.weight(1f),
-            )
         }
         Spacer(Modifier.height(Spacing.md))
         Hairline()
         Spacer(Modifier.height(Spacing.md))
-        DailyGoal(stats)
+        WeekStrip(week = week, todayQualified = stats.todayQualifies)
     }
 }
 
 /**
- * How close today's reading is to banking the day.
+ * Mastery as a proportion of the whole corpus.
  *
- * Sits under the figures rather than replacing any of them, because the streak is the *outcome*
- * and this is the *remaining work* - the reader should be able to see both without one hiding the
- * other. Green when the day is already safe, so the state is legible without reading the words.
+ * Animates its fill, because a bar that snaps to 48/48 gives no sense of the journey and this is
+ * the one figure on the screen that only ever moves one way. Under reduced motion it renders at its
+ * final width immediately - the app's rule is that reduced motion means no movement rather than
+ * movement that is merely faster.
  */
 @Composable
-private fun DailyGoal(stats: ReadingStats, modifier: Modifier = Modifier) {
-    val goalMet = stats.todayQualifies
-    val remaining = stats.secondsToGoal()
+private fun MasteryBar(mastered: Int, total: Int, modifier: Modifier = Modifier) {
+    val fraction = if (total <= 0) 0f else mastered.toFloat() / total
+    val target by animateFloatAsState(
+        targetValue = fraction.coerceIn(0f, 1f),
+        animationSpec = tween(if (reducedMotion()) 0 else Motion.LONG, easing = Motion.Settle),
+        label = "mastery",
+    )
 
     Column(modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                text = "$mastered of $total",
+                // Inter, not Playfair: Playfair's zero is a near-circle and reads as a lowercase
+                // "o", so "12 of 48" printed in it looks wrong at exactly the size the eye lands on.
+                style = LawTheme.typography.lawTitle.copy(
+                    fontFamily = Inter,
+                    fontSize = 22.sp,
+                    lineHeight = 28.sp,
+                    letterSpacing = 0.sp,
+                ),
+                color = ParchmentWhite,
+            )
+            Spacer(Modifier.width(Spacing.sm))
+            Text(
+                text = "laws mastered",
+                style = LawTheme.typography.bodySecondary,
+                color = ShadowGray,
+                modifier = Modifier.padding(bottom = 3.dp),
+            )
+        }
+        Spacer(Modifier.height(Spacing.sm))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(CourtGrayElevated),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(target)
+                    .fillMaxHeight()
+                    .background(SovereignGold),
+            )
+        }
+    }
+}
+
+/**
+ * The last seven days, one cell each, oldest at the left.
+ *
+ * A day that cleared the streak minimum is filled; a day that did not is not. Cells are always
+ * seven wide so the row does not reflow as the week fills in.
+ *
+ * Today is outlined rather than filled when it has not been read yet - "nothing here" and "you have
+ * not got to it yet" are different states, and only the second is recoverable.
+ */
+@Composable
+private fun WeekStrip(week: List<RecentDay>, todayQualified: Boolean, modifier: Modifier = Modifier) {
+    if (week.isEmpty()) return
+
+    Column(modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+        ) {
+            week.forEach { day ->
+                val isToday = day == week.last()
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(28.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(
+                                when {
+                                    day.qualifies -> ObservanceGreen
+                                    isToday -> CourtGrayElevated
+                                    else -> MaterialTheme.colorScheme.surfaceContainerHigh
+                                },
+                            ),
+                    )
+                    Spacer(Modifier.height(Spacing.xs))
+                    Text(
+                        text = day.day.letter(),
+                        style = LawTheme.typography.eyebrow,
+                        color = if (isToday) ParchmentWhite else ShadowGray,
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(Spacing.sm))
         Text(
-            text = if (goalMet) {
+            text = if (todayQualified) {
                 "Today is banked. The streak holds."
             } else {
-                "Read for ${(remaining / 60.0f).coerceAtLeast(1.0f).toInt()} more " +
-                    "${if (remaining <= 60) "minute" else "minutes"} to keep it."
+                "Read for a minute to bank today."
             },
             style = LawTheme.typography.bodySecondary,
-            color = if (goalMet) ObservanceGreen else ShadowGray,
+            color = if (todayQualified) ObservanceGreen else ShadowGray,
         )
     }
 }
+
+/** Single-letter weekday for the strip. `LocalDate`, not an index, so the label cannot drift. */
+private fun Long.letter(): String =
+    LocalDate.ofEpochDay(this).dayOfWeek
+        .getDisplayName(java.time.format.TextStyle.NARROW, java.util.Locale.getDefault())
+        .take(1)
+        .uppercase()
 
 @Composable
 private fun Stat(label: String, value: String, tint: Color, modifier: Modifier = Modifier) {
     Column(modifier = modifier) {
         Text(
             text = value,
-            // Inter, not Playfair. Playfair's zero is a near-circle and reads as a lowercase "o",
-            // so "0/48" printed in it looks like "o/48" - and these are the numbers a reader scans
-            // for. The serif is kept for the headings, where it belongs.
             style = LawTheme.typography.lawTitle.copy(
                 fontFamily = Inter,
                 fontSize = 20.sp,

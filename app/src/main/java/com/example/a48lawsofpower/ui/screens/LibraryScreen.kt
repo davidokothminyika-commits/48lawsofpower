@@ -14,9 +14,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Bookmark
+import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.CheckCircleOutline
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material3.Icon
@@ -43,20 +46,45 @@ import com.example.a48lawsofpower.ui.theme.ShadowGray
 import com.example.a48lawsofpower.ui.theme.SovereignGold
 import com.example.a48lawsofpower.ui.theme.Spacing
 
-/** The three states the library can show a law in. */
+/** The three states a law can be in *because the reader put it there*. */
 enum class LibraryFilter(val label: String) {
-    All("All"),
     Saved("Saved"),
-    Mastered("Mastered"),
+    Read("Read"),
+    Annotated("Annotated"),
 }
 
 /**
- * The Library: the reader's own collection, assembled from the laws they saved and the ones they
- * finished.
+ * Which laws fall under each filter.
  *
- * A browsing surface, so it reads on whichever family is active. It exists because "My Strategies"
- * answers only one of the two questions a returning reader has - *what did I keep?* and *what have
- * I actually finished?* - and the second one has had no home until now.
+ * A function rather than three inline `filter` calls at the call site, because the counts and the
+ * list have to come from the same answer - a pill that says "Annotated 4" beside a list showing two
+ * annotated laws is worse than no count at all.
+ *
+ * [annotatedIds] is a set of law ids rather than a count, so "is this law annotated" is one lookup
+ * instead of a scan per row.
+ */
+fun LibraryFilter.matches(law: LawOverview, annotatedIds: Set<Int>): Boolean = when (this) {
+    LibraryFilter.Saved -> law.bookmarked
+    LibraryFilter.Read -> law.read
+    LibraryFilter.Annotated -> law.id in annotatedIds
+}
+
+/** Every law the reader has touched in any way. The headline figure for this screen. */
+fun touchedLaws(laws: List<LawOverview>, annotatedIds: Set<Int>): Int =
+    laws.count { it.bookmarked || it.read || it.id in annotatedIds }
+
+/**
+ * The Library: only what the reader has put here themselves.
+ *
+ * **There is deliberately no "All" filter.** This screen used to open on one, which rendered all 48
+ * laws and made the Library a slower copy of the Dossier - the two tabs answered the same question
+ * in different fonts, and neither of them answered the question this screen was named for. The full
+ * corpus lives on the Dossier, with search and category filters; this is the shelf of what you
+ * chose. Dropping "All" is what lets every remaining filter have something to show.
+ *
+ * Which makes the empty states load-bearing rather than decorative. A filter that can return
+ * nothing has to say where the reader's work *is*, so [emptyBody] names the filters that do have
+ * something in them rather than simply reporting the absence.
  */
 @Composable
 fun LibraryScreen(
@@ -71,10 +99,9 @@ fun LibraryScreen(
 ) {
     val haptics = rememberHaptics()
 
-    val visible = when (filter) {
-        LibraryFilter.All -> laws
-        LibraryFilter.Saved -> laws.filter { it.bookmarked }
-        LibraryFilter.Mastered -> laws.filter { it.read }
+    val visible = laws.filter { filter.matches(it, annotatedLawIds) }
+    val counts = LibraryFilter.entries.associateWith { entry ->
+        laws.count { entry.matches(it, annotatedLawIds) }
     }
 
     Column(
@@ -107,6 +134,14 @@ fun LibraryScreen(
                 style = LawTheme.typography.lawNumber.copy(fontSize = 30.sp, lineHeight = 36.sp),
                 color = ParchmentWhite,
             )
+            Spacer(Modifier.height(Spacing.xs))
+            Text(
+                // Says how much of the corpus this shelf covers, so the screen is legible as a
+                // fraction of something rather than as an isolated list.
+                text = "${touchedLaws(laws, annotatedLawIds)} of ${laws.size} laws kept, read or marked",
+                style = LawTheme.typography.bodySecondary,
+                color = ShadowGray,
+            )
             Spacer(Modifier.height(Spacing.md))
             Hairline(color = SovereignGold)
             Spacer(Modifier.height(Spacing.sm))
@@ -118,6 +153,7 @@ fun LibraryScreen(
                     TogglePill(
                         label = entry.label,
                         selected = entry == filter,
+                        count = counts[entry] ?: 0,
                         onClick = {
                             haptics.selection()
                             onFilterChange(entry)
@@ -130,11 +166,11 @@ fun LibraryScreen(
         if (visible.isEmpty()) {
             EmptyState(
                 title = emptyTitle(filter),
-                body = emptyBody(filter),
+                body = emptyBody(filter, counts),
                 modifier = Modifier.padding(top = Spacing.lg),
             )
         } else {
-            androidx.compose.foundation.lazy.LazyColumn(
+            LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
                     top = Spacing.sm,
@@ -143,8 +179,7 @@ fun LibraryScreen(
                     bottom = contentPadding.calculateBottomPadding() + Spacing.xl,
                 ),
             ) {
-                items(visible.size, key = { visible[it].id }) { index ->
-                    val law = visible[index]
+                items(visible, key = { it.id }) { law ->
                     LibraryRow(
                         law = law,
                         annotated = law.id in annotatedLawIds,
@@ -162,6 +197,9 @@ fun LibraryScreen(
  * A library row. Lighter than a dossier card - this is a reference list, not an invitation to
  * browse - but it still shows the saved and marked states, because those are the reason the law is
  * in the list at all.
+ *
+ * The whole row is the tap target. It was title-only before, which meant the reader aimed at text
+ * on a list they were scanning rather than swiping through it.
  */
 @Composable
 private fun LibraryRow(
@@ -174,7 +212,9 @@ private fun LibraryRow(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = Spacing.xs),
+            .clip(RoundedCornerShape(Metrics.CornerRadius))
+            .clickable(onClick = onClick)
+            .padding(vertical = Spacing.sm),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -193,26 +233,34 @@ private fun LibraryRow(
                 color = ParchmentWhite,
                 modifier = Modifier.weight(1f),
             )
+            // The saved state is the one the reader can change from here, so it gets a real
+            // affordance. Read and annotated are consequences of reading, not switches.
+            Spacer(Modifier.width(Spacing.sm))
+            TinyState(
+                icon = if (law.bookmarked) Icons.Outlined.Bookmark else Icons.Outlined.BookmarkBorder,
+                label = if (law.bookmarked) "Saved" else "Save",
+                tint = if (law.bookmarked) SovereignGold else ShadowGray,
+                onClick = onToggleBookmark,
+            )
         }
         Spacer(Modifier.height(Spacing.xs))
         Row(
             modifier = Modifier.padding(start = 28.dp + Spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
+            Text(
+                text = law.category,
+                style = LawTheme.typography.eyebrow,
+                color = ShadowGray,
+                modifier = Modifier.weight(1f),
+            )
             if (law.read) {
                 TinyState(Icons.Outlined.CheckCircleOutline, "Read", ObservanceGreen)
             }
             if (annotated) {
                 TinyState(Icons.Outlined.EditNote, "Annotated", SovereignGold)
             }
-            Spacer(Modifier.weight(1f))
-            TinyState(
-                icon = Icons.Outlined.Bookmark,
-                label = if (law.bookmarked) "Saved" else "Save",
-                tint = if (law.bookmarked) SovereignGold else ShadowGray,
-                onClick = onToggleBookmark,
-            )
         }
         Spacer(Modifier.height(Spacing.sm))
         Hairline(color = HairlineBorder)
@@ -254,14 +302,30 @@ private fun TinyState(
     }
 }
 
-private fun emptyTitle(filter: LibraryFilter): String = when (filter) {
-    LibraryFilter.All -> "Nothing collected yet"
+/** Internal rather than private so the copy can be asserted without a device. */
+internal fun emptyTitle(filter: LibraryFilter): String = when (filter) {
     LibraryFilter.Saved -> "Nothing saved"
-    LibraryFilter.Mastered -> "Nothing marked as read"
+    LibraryFilter.Read -> "Nothing read yet"
+    LibraryFilter.Annotated -> "Nothing marked"
 }
 
-private fun emptyBody(filter: LibraryFilter): String = when (filter) {
-    LibraryFilter.All -> "Save a law and mark one as read, and both appear here."
-    LibraryFilter.Saved -> "Tap the bookmark on a law to keep it in your strategies."
-    LibraryFilter.Mastered -> "Open a law and tick it to record that you have read it."
+/**
+ * An empty state that points at the work that does exist.
+ *
+ * The reader arrives here from a filter they chose, so "nothing here" on its own is a dead end -
+ * it reads as the app having lost their data. Naming the filters that *do* have something turns it
+ * into the next useful tap.
+ */
+internal fun emptyBody(filter: LibraryFilter, counts: Map<LibraryFilter, Int>): String {
+    val elsewhere = LibraryFilter.entries
+        .filter { it != filter && (counts[it] ?: 0) > 0 }
+        .joinToString(" and ") { "${it.label.lowercase()} (${counts[it]})" }
+
+    val destination = when (filter) {
+        LibraryFilter.Saved -> "Tap the bookmark on any law to keep it here."
+        LibraryFilter.Read -> "Open a law and tick it to record that you have read it."
+        LibraryFilter.Annotated -> "Select a passage in the reader to leave a highlight or a note."
+    }
+
+    return if (elsewhere.isEmpty()) destination else "$destination You have ${elsewhere}."
 }

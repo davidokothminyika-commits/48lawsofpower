@@ -120,9 +120,12 @@ fun AppNavGraph(
 
     // Library filter and reading stats are screen-local: neither is a navigation-level concern, and
     // holding them here keeps a new destination from needing another parameter.
-    var libraryFilter by rememberSaveable { mutableStateOf(LibraryFilter.All) }
+    // Saved, not "All": there is no All filter any more. The Library is the shelf of what the
+    // reader chose, so opening it on the whole corpus would put it back to being a slower Dossier.
+    var libraryFilter by rememberSaveable { mutableStateOf(LibraryFilter.Saved) }
     val themeMode by settingsViewModel.themeMode.collectAsStateWithLifecycle()
     val readingStats by profileViewModel.stats.collectAsStateWithLifecycle()
+    val readingWeek by profileViewModel.week.collectAsStateWithLifecycle()
     // Annotated-ness is not on LawOverview, so the ids are lifted out of the review list once and
     // shared by the Library rows and the Profile counts.
     val annotatedLawIds = remember(allAnnotations) { allAnnotations.map { it.lawId }.toSet() }
@@ -289,6 +292,7 @@ fun AppNavGraph(
                 composable<ProfileRoute> {
                     ProfileScreen(
                         stats = readingStats,
+                        week = readingWeek,
                         totalLaws = totalLaws,
                         masteredLaws = masteredLaws,
                         savedCount = bookmarked.size,

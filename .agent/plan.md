@@ -261,6 +261,51 @@
   Both were removed; the 19-of-108-frame window was then visible in the recording. Also note
   `SovereignGold` resolves to **Crimson**, not gold - the accent was retheme'd - so any pixel check
   keying on gold finds nothing at all.
+### Task_11_ReviseLibraryAndProfile: Stop the Library being a slower Dossier, and give Profile a shape.
+- **Status:** COMPLETED
+- **Acceptance Criteria:**
+  - Library holds only the reader's own work; no filter duplicates the Dossier
+  - Every filter shows a count, and an empty filter points at the ones that are not empty
+  - Profile shows mastery and the week as shapes, not as flat numbers
+  - Verified in both colour families; tests green
+- **Notes:**
+  - **The Library's real defect was structural.** It opened on `All`, which rendered all 48 laws -
+    so "Your Collection" was the Dossier in a different font, answering neither question the screen
+    was named for. Dropping `All` is what lets every remaining filter have something to show; the
+    full corpus stays on the Dossier with its search and category pills.
+  - **`Annotated` was previously unfilterable.** `annotatedLawIds` was passed into the screen and
+    used only to draw a tag. The one state the Library uniquely owns was the one state it could not
+    query.
+  - **Counts come from the same function as the list.** `LibraryFilter.matches` is the single
+    definition of membership, and both the pill count and the rendered rows go through it - a pill
+    that says "Annotated 4" above a list of two is worse than no count.
+  - **The unreachable empty state is gone, and the reachable ones now teach.** With `All` gone,
+    `Saved` legitimately opens empty for a new reader. So `emptyBody` names the filters that *do*
+    have something rather than just reporting absence - an empty state that only says "nothing here"
+    reads as the app having lost the reader's data.
+  - **Profile went from a flat 2x3 of equal-weight numbers to three tiers.** Mastery got a bar and a
+    fraction, because "12/48" as bare text gives no sense of how far along that is and it is the arc
+    of the whole project. The week strip makes the streak concrete - "5d" is an abstraction, five
+    filled cells with two gaps in them is a picture of an actual week, and it is the only place the
+    reader can see today is still unfilled.
+  - **"Annotations" was deleted from the stat grid**, not moved: the Notes row directly below said
+    the same number with more context, and two identical figures on one screen read as a bug.
+  - **Removed the 56dp avatar.** It drew a generic person glyph in an app with no accounts - a false
+    affordance suggesting a profile you can tap. The old comment conceded it "carries no identity and
+    no initials"; there was nothing behind it.
+  - The week strip is padded to a fixed seven cells rather than filtered to days with rows, so the
+    row does not reflow sideways as the week fills in.
+  - Verified on device with a seeded mid-journey reader (8 saved, 22 read, 6 annotated across 6 laws)
+  in both families: Library reads `Saved 8 / Read 22 / Annotated 6` under
+  "22 of 48 laws kept, read or marked"; Profile shows the mastery bar at 22/48 and a week strip that
+  correctly leaves *today* unfilled while the streak still reads 5d from yesterday - the documented
+  "a streak may end yesterday and still count" rule.
+  - 60 unit + 14 instrumented tests pass, 0 crashes.
+- **One correction worth recording:** the first run of `LibraryScreenTest` asserted a "touched" count
+  of 6 against a fixture that yields 8, and then asserted an annotation on a law id that was not in
+  the list at all. The implementation was right both times. A test whose arithmetic disagrees with the
+  code is not evidence about the code - fix the test, but only after checking which of the two is
+  wrong.
 - **Environment note:** this device repeatedly loses taps - a media player and a Google assistant
   overlay take the foreground mid-run, processes freeze, and `input tap` events are sometimes
   delivered to the *next* window. Several apparent bugs during this work were that, not the app.
