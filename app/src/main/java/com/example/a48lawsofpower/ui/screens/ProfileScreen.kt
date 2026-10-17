@@ -54,7 +54,6 @@ import com.example.a48lawsofpower.ui.theme.SovereignGold
 import com.example.a48lawsofpower.ui.theme.Spacing
 import com.example.a48lawsofpower.ui.theme.ThemeMode
 import com.example.a48lawsofpower.ui.theme.reducedMotion
-import java.time.LocalDate
 
 /**
  * Profile: the reader's standing, the things they have kept, and the app's settings.
@@ -347,7 +346,7 @@ private fun WeekStrip(week: List<RecentDay>, todayQualified: Boolean, modifier: 
                     )
                     Spacer(Modifier.height(Spacing.xs))
                     Text(
-                        text = day.day.letter(),
+                        text = day.initial,
                         style = LawTheme.typography.eyebrow,
                         color = if (isToday) ParchmentWhite else ShadowGray,
                     )
@@ -367,12 +366,13 @@ private fun WeekStrip(week: List<RecentDay>, todayQualified: Boolean, modifier: 
     }
 }
 
-/** Single-letter weekday for the strip. `LocalDate`, not an index, so the label cannot drift. */
-private fun Long.letter(): String =
-    LocalDate.ofEpochDay(this).dayOfWeek
-        .getDisplayName(java.time.format.TextStyle.NARROW, java.util.Locale.getDefault())
-        .take(1)
-        .uppercase()
+/**
+ * Single-letter weekday, precomputed by the ViewModel.
+ *
+ * Kept off this screen deliberately: resolving it here means `LocalDate` is first touched during
+ * composition on the main thread, and that one-time initialisation was measurably the slowest thing
+ * on the tab. See [RecentDay.initial].
+ */
 
 @Composable
 private fun Stat(label: String, value: String, tint: Color, modifier: Modifier = Modifier) {

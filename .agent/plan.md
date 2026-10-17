@@ -306,6 +306,49 @@
   the list at all. The implementation was right both times. A test whose arithmetic disagrees with the
   code is not evidence about the code - fix the test, but only after checking which of the two is
   wrong.
+### Task_12_TabSwitchPerformance: Find why switching tabs stalled, and cut release 1.5.0.
+- **Status:** COMPLETED
+- **Acceptance Criteria:**
+  - Tab switching measured on device, not estimated
+  - The dominant cause fixed rather than guessed at
+  - Release variant built, installed and verified
+  - Version bumped; tests green
+- **Notes:**
+  - **Most of the lag was the build type, not the code.** Measured on this device, same taps:
+    a *debug* build spent 650-1100ms per frame entering any tab (99th percentile 1300-1550ms,
+    100% of frames janky). The same taps on `assembleRelease` were 18-40ms median. The build file
+    already said as much in a comment - "a debug Compose build is several times slower, so always
+    judge scrolling performance on the release variant" - which is exactly the kind of note that gets
+    written once and then forgotten. **Do not profile this app on debug.**
+  - **Profile was genuinely the slowest tab even in release, and it was ours.** Two real causes, both
+    found by reading what actually ran rather than by guessing:
+    - `stats` and `week` each collected `ProgressDao.observeAllDays` independently, so opening the
+      Profile ran the same query and row mapping twice. They now share one read.
+    - Room delivers on its own executor, but a `map` runs in the *collector's* context - and the
+      collector was `viewModelScope`, which is `Dispatchers.Main.immediate`. So the fold, and the
+      `LocalDate.now(ZoneId.systemDefault())` inside it, ran on the thread that has to draw the
+      frame. `flowOn(Dispatchers.Default)` moved it off.
+  - **`java.time` was being initialised during composition.** The week strip resolved its weekday
+      letters with `DayOfWeek.getDisplayName(TextStyle.NARROW, Locale)`, which drags in locale and
+      CLDR data on first use, on the main thread, on the frame the reader tapped Profile. The letters
+      are now a seven-entry lookup indexed by `DayOfWeek.value`, resolved in the ViewModel and
+      carried on `RecentDay.initial` so the composable touches no date-time at all. Profile went
+      121ms -> 89ms median and 900ms -> 500ms p99 *after* the build-type fix.
+  - Final measured state on the release build, entering each tab cold: Library 27ms median,
+    Codex 24ms, Profile 89ms, jank 10-50%. Profile remains the heaviest and is the one to watch if
+    this regresses.
+  - **A baseline profile module is the next real lever and does not exist.** First-composition class
+    loading is what dominates now; a `:baselineprofile` module with a Macrobenchmark would remove
+    most of it. Deliberately not built here - it is a new Gradle module and a device-bound benchmark
+    run, not a quick win.
+- **Two measurement traps hit here, both worth remembering:**
+  - **`connectedDebugTest` reports BUILD SUCCESSFUL when it ran nothing.** The release APK is signed
+    with the release key, so the debug APK cannot be installed over it; the install fails, the tests
+    do not run, and the task still succeeds. I read the XML results (0 tests) rather than the build
+    status, and re-ran after uninstalling. Always check the test count, not the build.
+  - **`adb uninstall` returned `DELETE_FAILED_INTERNAL_ERROR`** while a process was still stopping,
+    yet the install then succeeded. Do not treat that first failure as fatal.
+- 60 unit + 14 instrumented tests pass, 0 crashes. Version 1.5.0 / code 6 installed and verified.
 - **Environment note:** this device repeatedly loses taps - a media player and a Google assistant
   overlay take the foreground mid-run, processes freeze, and `input tap` events are sometimes
   delivered to the *next* window. Several apparent bugs during this work were that, not the app.

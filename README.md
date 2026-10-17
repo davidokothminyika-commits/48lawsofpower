@@ -8,10 +8,18 @@ reversal.
 ## Features
 
 - 48 laws in a Room-backed local database, no network access at runtime
-- Codex, Dossier, and Strategies screens
-- Reading progress and personal strategy notes, stored on-device
+- Daily reading streaks, banked at one minute of actual reading, with an
+  animated reward the first time a day qualifies
+- Highlights, notes and bookmarks, anchored to the text so they survive a
+  re-encode
+- Library as the reader's own collection - saved, read, annotated
+- Mastery progress and a seven-day reading strip on the Profile
 - In-app consent gate and Legal tab
 - Material 3, light and dark
+
+> **Performance is only meaningful on the release build.** A debug Compose
+> build measured ~30x slower on tab entry on the test device. Use
+> `assembleRelease` before judging any frame timing.
 
 ## Build
 
