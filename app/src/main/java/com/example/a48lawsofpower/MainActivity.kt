@@ -23,6 +23,7 @@ import com.example.a48lawsofpower.ui.annotations.AnnotationsViewModel
 import com.example.a48lawsofpower.ui.legal.LegalViewModel
 import com.example.a48lawsofpower.ui.navigation.AppNavGraph
 import com.example.a48lawsofpower.ui.profile.ProfileViewModel
+import com.example.a48lawsofpower.ui.progress.ReadingTrackerViewModel
 import com.example.a48lawsofpower.ui.screens.ConsentGateScreen
 import com.example.a48lawsofpower.ui.screens.LoadingState
 import com.example.a48lawsofpower.ui.settings.SettingsStore
@@ -80,6 +81,36 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Reading-time accounting. Activity-scoped so a rotation does not close the counting window and
+    // write a fragmentary number of seconds that never adds up to a minute.
+    private val readingTrackerViewModel: ReadingTrackerViewModel by viewModels {
+        object : ViewModelProvider.Factory {
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                val database = LawDatabase.getDatabase(applicationContext)
+                @Suppress("UNCHECKED_CAST")
+                return ReadingTrackerViewModel(database.progressDao()) as T
+            }
+        }
+    }
+
+    /**
+     * The foreground half of the reading-time gate, driven from the lifecycle rather than from
+     * composition so the flush on the way out still happens when the composition is already gone.
+     *
+     * `onStop` rather than `onPause`: a dialog or the notification shade pauses the Activity
+     * without the reader having looked away, and time spent squinting at a permission prompt is not
+     * reading. Reading time stops while the app is off the screen, which is the whole point.
+     */
+    override fun onStart() {
+        super.onStart()
+        readingTrackerViewModel.setForeground(true)
+    }
+
+    override fun onStop() {
+        readingTrackerViewModel.setForeground(false)
+        super.onStop()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -117,6 +148,7 @@ class MainActivity : ComponentActivity() {
                                 annotationsViewModel = annotationsViewModel,
                                 settingsViewModel = settingsViewModel,
                                 profileViewModel = profileViewModel,
+                                readingTrackerViewModel = readingTrackerViewModel,
                                 startAtDossier = hasSeenIntro == true,
                             )
                     }

@@ -262,8 +262,46 @@ private fun StatRow(
         Row {
             Stat("Days read", "${stats.totalDays}", ParchmentWhite, Modifier.weight(1f))
             Stat("Annotations", "$annotatedCount", ParchmentWhite, Modifier.weight(1f))
-            Stat("Today", "${stats.lawsReadToday}", ShadowGray, Modifier.weight(1f))
+            // Minutes, not laws. A day now counts toward the streak on reading time rather than on
+            // laws opened, so "today" has to be measured the same way or the two figures contradict
+            // each other on screen.
+            Stat(
+                label = "Minutes today",
+                value = "${stats.totalMinutes}",
+                tint = if (stats.todayQualifies) ObservanceGreen else ShadowGray,
+                modifier = Modifier.weight(1f),
+            )
         }
+        Spacer(Modifier.height(Spacing.md))
+        Hairline()
+        Spacer(Modifier.height(Spacing.md))
+        DailyGoal(stats)
+    }
+}
+
+/**
+ * How close today's reading is to banking the day.
+ *
+ * Sits under the figures rather than replacing any of them, because the streak is the *outcome*
+ * and this is the *remaining work* - the reader should be able to see both without one hiding the
+ * other. Green when the day is already safe, so the state is legible without reading the words.
+ */
+@Composable
+private fun DailyGoal(stats: ReadingStats, modifier: Modifier = Modifier) {
+    val goalMet = stats.todayQualifies
+    val remaining = stats.secondsToGoal()
+
+    Column(modifier.fillMaxWidth()) {
+        Text(
+            text = if (goalMet) {
+                "Today is banked. The streak holds."
+            } else {
+                "Read for ${(remaining / 60.0f).coerceAtLeast(1.0f).toInt()} more " +
+                    "${if (remaining <= 60) "minute" else "minutes"} to keep it."
+            },
+            style = LawTheme.typography.bodySecondary,
+            color = if (goalMet) ObservanceGreen else ShadowGray,
+        )
     }
 }
 

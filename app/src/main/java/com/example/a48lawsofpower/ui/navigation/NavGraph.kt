@@ -48,6 +48,9 @@ import com.example.a48lawsofpower.ui.screens.ProfileScreen
 import com.example.a48lawsofpower.ui.screens.LibraryFilter
 import com.example.a48lawsofpower.ui.screens.LibraryScreen
 import com.example.a48lawsofpower.ui.profile.ProfileViewModel
+import com.example.a48lawsofpower.ui.progress.ReadingTrackerViewModel
+import com.example.a48lawsofpower.ui.progress.StreakCelebration
+import com.example.a48lawsofpower.ui.components.StreakCelebrationOverlay
 import com.example.a48lawsofpower.ui.screens.LegalDocumentScreen
 import com.example.a48lawsofpower.ui.screens.LegalScreen
 import com.example.a48lawsofpower.ui.screens.SplashScreen
@@ -85,6 +88,7 @@ fun AppNavGraph(
     annotationsViewModel: AnnotationsViewModel,
     settingsViewModel: SettingsViewModel,
     profileViewModel: ProfileViewModel,
+    readingTrackerViewModel: ReadingTrackerViewModel,
     startAtDossier: Boolean,
 ) {
     val navController = rememberNavController()
@@ -136,6 +140,22 @@ fun AppNavGraph(
     // When the splash *is* shown it starts false and is set by Get Started.
     var splashDismissed by rememberSaveable(startAtDossier) { mutableStateOf(startAtDossier) }
     val haptics = rememberHaptics()
+
+    // Reading time accrues only while a law is the destination in front of the reader. The other
+    // half of that gate - the app being foregrounded - is the Activity's, so the two signals live in
+    // different places on purpose and neither can be wrong while the other still says yes.
+    val isReaderVisible = backStackEntry?.destination?.hasRoute<DetailRoute>() == true
+    LaunchedEffect(isReaderVisible) { readingTrackerViewModel.setReaderVisible(isReaderVisible) }
+
+    var celebration by remember { mutableStateOf<StreakCelebration?>(null) }
+    LaunchedEffect(Unit) {
+        readingTrackerViewModel.celebrations.collect { celebration = it }
+    }
+    // Leaving the reader clears it. A reward for reading that outlives the reader would sit on top
+    // of the Dossier, congratulating someone for something they can no longer see themselves doing.
+    LaunchedEffect(isReaderVisible) {
+        if (!isReaderVisible) celebration = null
+    }
 
     Scaffold(
         bottomBar = {
@@ -352,6 +372,14 @@ fun AppNavGraph(
             }
 
             StatusBarScrim(Modifier.align(Alignment.TopCenter))
+
+            // Last in the Box, so it draws above both the screen and the status bar scrim. It
+            // carries its own status-bar padding and so clears the scrim rather than sitting on it.
+            StreakCelebrationOverlay(
+                celebration = celebration,
+                onDismiss = { celebration = null },
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
         }
     }
 }

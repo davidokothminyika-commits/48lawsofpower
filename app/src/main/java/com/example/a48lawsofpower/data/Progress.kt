@@ -35,6 +35,20 @@ data class ReadingDayEntity(
     val secondsRead: Long = 0,
 )
 
+/**
+ * How much reading a day must contain before it counts toward a streak.
+ *
+ * A streak that counts *opening the app* is not a streak, it is a launch counter - and it punishes
+ * the reader for the worst possible moments, the ones where they had thirty seconds and could not
+ * concentrate. A minute of actual reading is the smallest unit that reliably means "I studied".
+ *
+ * It is applied when the numbers are read, not when they are written. `reading_days` records
+ * whatever the reader did, however briefly, and the threshold decides afterwards what counts. That
+ * ordering is what lets the same table answer "minutes read today" honestly *and* "streak" strictly,
+ * without two tables disagreeing about the same day.
+ */
+const val STREAK_MIN_SECONDS = 60
+
 /** Current reading totals, computed by a single fold over [reading_days]. */
 data class ReadingStats(
     val currentStreak: Int = 0,
@@ -43,8 +57,14 @@ data class ReadingStats(
     val totalLawsRead: Int = 0,
     val secondsToday: Long = 0,
     val lawsReadToday: Int = 0,
+
+    /** Whether today has already cleared [STREAK_MIN_SECONDS] and so is banked. */
+    val todayQualifies: Boolean = false,
 ) {
     val totalMinutes: Long get() = secondsToday / 60
+
+    /** Seconds still to read today to keep the streak alive, or 0 once it is already safe. */
+    fun secondsToGoal(): Long = (STREAK_MIN_SECONDS - secondsToday).coerceAtLeast(0L)
 }
 
 /** Today's epoch-day, in the device's current zone. */
@@ -59,6 +79,9 @@ fun todayEpochDay(zone: ZoneId = ZoneId.systemDefault()): Long =
  * window functions at all).
  *
  * Rules, in the order they matter:
+ *  - A day only counts once it clears [minSecondsPerDay]. Defaults to 0, which makes a logged day a
+ *    streak day - the behaviour every pure day-list caller wants, and the reason the default is not
+ *    [STREAK_MIN_SECONDS]. A reader of this function has to choose.
  *  - A streak may end *yesterday* and still count. Today not being logged yet is the normal state
  *    at breakfast, and breaking a streak before the day is over punishes someone for waking up.
  *  - Duplicated or out-of-order rows cannot happen: [day] is the primary key.
@@ -68,10 +91,21 @@ fun computeStats(
     today: Long,
     lawsByDay: Map<Long, Int> = emptyMap(),
     secondsByDay: Map<Long, Long> = emptyMap(),
+    minSecondsPerDay: Int = 0,
 ): ReadingStats {
     if (days.isEmpty()) return ReadingStats()
 
-    val sorted = days.sorted()
+    // Filter before any of the arithmetic. Counting a day toward `longestStreak` and then reporting
+    // it as unbanked elsewhere is how a profile ends up claiming a streak it never awarded.
+    val sorted = days.sorted().filter { (secondsByDay[it] ?: 0L) >= minSecondsPerDay }
+    if (sorted.isEmpty()) {
+        return ReadingStats(
+            totalLawsRead = lawsByDay.values.sum(),
+            secondsToday = secondsByDay[today] ?: 0L,
+            lawsReadToday = lawsByDay[today] ?: 0,
+        )
+    }
+
     var longest = 1
     var run = 1
     for (i in 1 until sorted.size) {
@@ -88,6 +122,9 @@ fun computeStats(
             longestStreak = longest,
             totalDays = sorted.size,
             totalLawsRead = lawsByDay.values.sum(),
+            secondsToday = secondsByDay[today] ?: 0L,
+            lawsReadToday = lawsByDay[today] ?: 0,
+            todayQualifies = sorted.contains(today),
         )
     }
 
@@ -105,6 +142,7 @@ fun computeStats(
         totalLawsRead = lawsByDay.values.sum(),
         secondsToday = secondsByDay[today] ?: 0L,
         lawsReadToday = lawsByDay[today] ?: 0,
+        todayQualifies = sorted.contains(today),
     )
 }
 
@@ -133,4 +171,16 @@ interface ProgressDao {
 
     @Query("DELETE FROM reading_days")
     suspend fun clear()
+}
+
+/**
+ * Records one more distinct law marked read today.
+ *
+ * The upsert takes `MAX(laws_read, excluded.laws_read)`, so it deliberately does *not* increment -
+ * passing `1` per tap would pin the column at 1 forever. The caller passes the running total read
+ * back out of the row instead, which keeps the column meaning what its name says: distinct laws,
+ * not marks made.
+ */
+suspend fun ProgressDao.recordDistinctLawRead(day: Long = todayEpochDay()) {
+    recordActivity(day = day, laws = (getDay(day)?.lawsRead ?: 0) + 1, seconds = 0L)
 }

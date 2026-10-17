@@ -213,6 +213,54 @@
   - Verified on device from `pm clear`: gate -> accept -> Get Started -> Dossier -> force-stop ->
     relaunch goes straight to the Dossier with neither screen. Revocation returning to the gate was
     verified separately via Profile > Withdraw.
+### Task_10_ReadingStreaks: Make the streak real, and reward the day it is earned.
+- **Status:** COMPLETED
+- **Acceptance Criteria:**
+  - The Profile streak is driven by real reading time, not a launch counter
+  - A streak day requires a minute of actual reading
+  - An animated star appears when a streak day is banked, showing the streak and an encouragement
+  - Unit + instrumented tests green
+- **Notes:**
+  - **The gamification layer already existed and was dead.** `reading_days`, `ProgressDao`,
+    `computeStats` and a Profile stat block were all shipped, but `recordActivity` had **no call site
+    outside tests**, so the table was permanently empty and the Profile showed a fixed
+    `0d / 0d / 0 days / 0 today` - four figures wired to nothing. Wiring it up was most of the work.
+  - **A day now counts on reading time, not on opening the app.** `STREAK_MIN_SECONDS = 60`. The
+    threshold is applied when the numbers are *read* (`computeStats`'s new `minSecondsPerDay`), not
+    when they are written, so one table answers "minutes today" honestly *and* "streak" strictly
+    without the two disagreeing. `ProfileViewModel` passes the real threshold; the default stays `0`
+    so pure day-list callers keep their old meaning rather than silently gaining a filter.
+  - **`ReadingTracker` is the part that had to be right.** Time accrues only when the app is
+    foregrounded (`Activity.onStart`/`onStop`) *and* a law is the visible destination - two
+    independent signals, neither able to say yes alone. Four things that a naive `delay(1000)` loop
+    gets wrong, each pinned by a test:
+    - Elapsed time is **derived from `elapsedRealtime`**, not counted. Ticks are delayed over sleep,
+      so a counter credits the device's doze as reading.
+    - The window is **flushed every 15s**, bounding process-death loss to one interval.
+    - Sub-second remainders are **carried, not rounded away**, so five 11.8s sittings still total 59s.
+    - Closing the window **before** the async flush. Leaving it open charged every idle second
+      between closing a law and the flush landing. This was a real bug the tests caught: a reader
+      who closed a law and walked away for five minutes was credited with five minutes of reading.
+  - **Once-a-day needs no flag.** The reward fires on the flush where today's total crosses the
+    threshold (`before < min && after >= min`). Once written, today's total is already at or above
+    the minimum, so the next flush - and the first flush after a cold start - fails the condition
+    and stays quiet. A persisted "already congratulated" row would have been another thing to keep
+    in sync for no gain. Verified on device: card at ~t+15s, then still reading at t+45s, no repeat.
+  - **The encouragement never implies the reader has fallen behind.** No "don't break it" copy at
+    any streak length, and there is a unit test that fails if guilt language appears - shame-driven
+    streaks are the mechanic that makes people abandon the app.
+  - Verified on device from a seeded database: 58s on today + 3 prior days -> first flush crosses,
+    the star appears over the reader showing **4** with "It is becoming a habit", and the Profile
+    then reads `1d` streak / `1d` best / `1` day / `1` minute today with "Today is banked" in green.
+  - 53 unit + 14 instrumented tests pass, 0 crashes.
+- **Screenshotted mid-verification, not trusted blindly:** `screencap` on this device takes ~3.8s
+  and the card lives 3.8s, so a poll-and-look loop is almost guaranteed to miss it - six capture
+  attempts produced nothing, which read as "the card never renders". It did render. Two things
+  settled it: `screenrecord` started *before* the tap (starting it after a screencap put the 15s
+  flush outside the recording), and a temporary log confirming the emit reached the composable.
+  Both were removed; the 19-of-108-frame window was then visible in the recording. Also note
+  `SovereignGold` resolves to **Crimson**, not gold - the accent was retheme'd - so any pixel check
+  keying on gold finds nothing at all.
 - **Environment note:** this device repeatedly loses taps - a media player and a Google assistant
   overlay take the foreground mid-run, processes freeze, and `input tap` events are sometimes
   delivered to the *next* window. Several apparent bugs during this work were that, not the app.
