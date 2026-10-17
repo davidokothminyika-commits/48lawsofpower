@@ -85,37 +85,42 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val themeMode by settingsViewModel.themeMode.collectAsStateWithLifecycle()
+                val hasSeenIntro by settingsViewModel.hasSeenIntro.collectAsStateWithLifecycle()
 
-            _48LawsOfPowerTheme(themeMode = themeMode) {
-                val consent by legalViewModel.consent.collectAsStateWithLifecycle()
+                _48LawsOfPowerTheme(themeMode = themeMode) {
+                    val consent by legalViewModel.consent.collectAsStateWithLifecycle()
 
-                // The gate lives here rather than inside the nav graph so that nothing behind it is
-                // ever composed: [LawsViewModel] opens the database the moment it is constructed, and
-                // that must not happen for a reader who has not agreed yet.
-                when (consent) {
-                    ConsentStatus.Unknown ->
-                        Box(
-                            Modifier
-                                .fillMaxSize()
-                                .background(MaterialTheme.colorScheme.background),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            LoadingState()
-                        }
+                    // The gate lives here rather than inside the nav graph so that nothing behind it is
+                    // ever composed: [LawsViewModel] opens the database the moment it is constructed, and
+                    // that must not happen for a reader who has not agreed yet.
+                    when {
+                        // Consent has to be settled, and so does the entry-screen flag - the nav
+                        // graph's start destination is chosen from it, and guessing would either
+                        // flash Get Started at a returning reader or skip it on a real first launch.
+                        consent == ConsentStatus.Unknown || hasSeenIntro == null ->
+                            Box(
+                                Modifier
+                                    .fillMaxSize()
+                                    .background(MaterialTheme.colorScheme.background),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                LoadingState()
+                            }
 
-                    ConsentStatus.Required ->
-                        ConsentGateScreen(onAccept = legalViewModel::accept)
+                        consent == ConsentStatus.Required ->
+                            ConsentGateScreen(onAccept = legalViewModel::accept)
 
-                    ConsentStatus.Granted ->
-                        AppNavGraph(
-                            viewModel = viewModel,
-                            legalViewModel = legalViewModel,
-                            annotationsViewModel = annotationsViewModel,
-                            settingsViewModel = settingsViewModel,
-                            profileViewModel = profileViewModel,
-                        )
+                        else ->
+                            AppNavGraph(
+                                viewModel = viewModel,
+                                legalViewModel = legalViewModel,
+                                annotationsViewModel = annotationsViewModel,
+                                settingsViewModel = settingsViewModel,
+                                profileViewModel = profileViewModel,
+                                startAtDossier = hasSeenIntro == true,
+                            )
+                    }
                 }
-            }
         }
     }
 }

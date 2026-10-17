@@ -15,7 +15,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Exercises the v5 additions against a real SQLite on a real device.
+ * Exercises the DAO against a real SQLite on a real device.
  *
  * This is the layer the unit tests cannot reach: Room's generated code, the SQLite dialect of a
  * particular Android version, and the `ON CONFLICT ... DO UPDATE` clause in `recordActivity`,
@@ -23,15 +23,20 @@ import org.junit.runner.RunWith
  * ones. A build that compiles proves none of that.
  *
  * Uses an in-memory database rather than the production one so the test cannot disturb real
- * highlights, and so it starts from the v5 schema directly instead of depending on a migration.
- * Migration correctness is covered separately by tools/verify_migrations.py and by upgrading the
- * installed app in place.
+ * highlights, and so it starts from the current schema directly instead of depending on a
+ * migration. Migration correctness is covered separately by tools/verify_migrations.py and by
+ * upgrading the installed app in place.
+ *
+ * Rewritten against the v5+ [AnnotationDao]. This file previously held the v4 [HighlightDao] suite
+ * and had not compiled since the schema changed - `assembleDebug` and `testDebugUnitTest` both stay
+ * green without ever touching the androidTest source set, so nothing noticed. Its tests are kept
+ * here deliberately; they were sound, just written against an API that no longer exists.
  */
 @RunWith(AndroidJUnit4::class)
 class AnnotationDaoInstrumentedTest {
 
     private lateinit var db: LawDatabase
-    private lateinit var highlights: HighlightDao
+    private lateinit var annotations: AnnotationDao
     private lateinit var progress: ProgressDao
     private var lawId: Int = 0
 
@@ -42,7 +47,7 @@ class AnnotationDaoInstrumentedTest {
         db = Room.inMemoryDatabaseBuilder(context, LawDatabase::class.java)
             .allowMainThreadQueries()
             .build()
-        highlights = db.highlightDao()
+        annotations = db.annotationDao()
         progress = db.progressDao()
         lawId = seedLaw()
     }
@@ -53,7 +58,7 @@ class AnnotationDaoInstrumentedTest {
     }
 
     /**
-     * `highlights.law_id` is a foreign key with ON DELETE CASCADE, so a parent row has to exist.
+     * `annotations.law_id` is a foreign key with ON DELETE CASCADE, so a parent row has to exist.
      *
      * In production the laws come from the pre-packaged asset, which an in-memory database does
      * not have. LawDao exposes no insert - the reader never creates laws - so the single row is
@@ -65,8 +70,10 @@ class AnnotationDaoInstrumentedTest {
         sql.execSQL(
             """
             INSERT INTO laws
-                (law_number, category, title, summary, core, observance, transgression, reversal, bookmarked, read)
-            VALUES (1, 'Strategic action', 'Never Outshine the Master', 'A test law.', '', '', '', '', 0, 0)
+                (law_number, category, title, summary, core, observance, transgression, reversal,
+                 key_takeaways, bookmarked, read)
+            VALUES (1, 'Strategic action', 'Never Outshine the Master', 'A test law.',
+                    '', '', '', '', '', 0, 0)
             """.trimIndent(),
         )
         sql.query("SELECT id FROM laws WHERE law_number = 1").use { c ->
@@ -75,12 +82,32 @@ class AnnotationDaoInstrumentedTest {
         }
     }
 
+    /** A minimal mark. `anchor_text` is NOT NULL with no default, so it is always supplied. */
+    private fun mark(
+        section: String = SectionKey.CORE,
+        start: Int = 0,
+        end: Int = 3,
+        color: String = "gold",
+        note: String = "",
+        type: String = AnnotationType.Highlight.wire,
+        createdAt: Long = 0,
+        anchor: String = "anchor text for the mark",
+    ) = AnnotationEntity(
+        lawId = lawId,
+        section = section,
+        start = start,
+        end = end,
+        anchorText = anchor,
+        type = type,
+        color = color,
+        note = note,
+        createdAt = createdAt,
+    )
+
     @Test
-    fun highlightRoundTrips() = runBlocking {
-        highlights.insert(
-            HighlightEntity(
-                lawId = lawId,
-                section = SectionKey.CORE,
+    fun annotationRoundTrips() = runBlocking {
+        annotations.insert(
+            mark(
                 start = 10,
                 end = 42,
                 color = "crimson",
@@ -88,7 +115,7 @@ class AnnotationDaoInstrumentedTest {
                 createdAt = 1_700_000_000_000,
             ),
         )
-        val found = highlights.observeForLaw(lawId).first()
+        val found = annotations.observeForLaw(lawId).first()
         assertEquals(1, found.size)
         assertEquals(10, found[0].start)
         assertEquals(42, found[0].end)
@@ -98,23 +125,19 @@ class AnnotationDaoInstrumentedTest {
 
     @Test
     fun noteAndColourAreEditable() = runBlocking {
-        val id = highlights.insert(
-            HighlightEntity(lawId = lawId, section = SectionKey.REVERSAL, start = 0, end = 5, color = "gold"),
-        )
-        highlights.setNote(id, "revised")
-        highlights.setColor(id, "violet")
+        val id = annotations.insert(mark(section = SectionKey.REVERSAL, end = 5))
+        annotations.setNote(id, "revised", 1L)
+        annotations.setColor(id, "violet", 1L)
 
-        val found = highlights.observeForLaw(lawId).first().single()
+        val found = annotations.observeForLaw(lawId).first().single()
         assertEquals("revised", found.note)
         assertEquals("violet", found.color)
     }
 
     @Test
     fun reselectingACoveringRangeFindsIt() = runBlocking {
-        highlights.insert(
-            HighlightEntity(lawId = lawId, section = SectionKey.CORE, start = 10, end = 50, color = "gold"),
-        )
-        val covering = highlights.findCovering(lawId, SectionKey.CORE, 20, 30)
+        annotations.insert(mark(start = 10, end = 50))
+        val covering = annotations.findCoveringHighlight(lawId, SectionKey.CORE, 20, 30)
         assertNotNull("a range fully inside the highlight should match", covering)
         assertEquals(10, covering!!.start)
         assertEquals(50, covering.end)
@@ -122,36 +145,78 @@ class AnnotationDaoInstrumentedTest {
 
     @Test
     fun aRangeNotCoveredIsNotMatched() = runBlocking {
-        highlights.insert(
-            HighlightEntity(lawId = lawId, section = SectionKey.CORE, start = 10, end = 50, color = "gold"),
-        )
+        annotations.insert(mark(start = 10, end = 50))
         // Straddles the boundary, so containment must not match it.
-        assertNull(highlights.findCovering(lawId, SectionKey.CORE, 5, 20))
+        assertNull(annotations.findCoveringHighlight(lawId, SectionKey.CORE, 5, 20))
         // Different section entirely.
-        assertNull(highlights.findCovering(lawId, SectionKey.REVERSAL, 10, 50))
+        assertNull(annotations.findCoveringHighlight(lawId, SectionKey.REVERSAL, 10, 50))
     }
 
     @Test
     fun highlightsAreListedAcrossLawsForTheNotesScreen() = runBlocking {
-        highlights.insert(
-            HighlightEntity(lawId = lawId, section = SectionKey.CORE, start = 0, end = 3, color = "gold", createdAt = 10),
-        )
-        val joined = highlights.observeAllWithLaw().first()
+        annotations.insert(mark(start = 0, end = 3, createdAt = 10))
+        val joined = annotations.observeFiltered(null, null).first()
         assertEquals(1, joined.size)
         assertNotNull(joined[0].lawTitle)
     }
 
+    /**
+     * Regression: a NULL filter means "no filter".
+     *
+     * `AnnotationsViewModel.review` passes `(null, null)` for its default, unfiltered state via
+     * `takeIf`. The colour clause used to read `:color = ''`, and with a NULL parameter that
+     * evaluates to NULL rather than true - so the entire WHERE was unknown and the review screen
+     * returned **nothing** for a reader who had not touched the filters. Every default visit to
+     * My Notes was empty, which is why the screen needed seeding before the bug was visible.
+     *
+     * These two assertions are the whole fix: one per NULL parameter, both of which used to yield
+     * an empty list.
+     */
     @Test
-    fun deleteRemovesOnlyThatHighlight() = runBlocking {
-        val keep = highlights.insert(
-            HighlightEntity(lawId = lawId, section = SectionKey.CORE, start = 0, end = 3, color = "gold"),
+    fun aNullFilterMeansNoFilterNotNoResults() = runBlocking {
+        annotations.insert(mark(createdAt = 1))
+        annotations.insert(
+            mark(type = AnnotationType.Note.wire, note = "a real note", createdAt = 2),
         )
-        val drop = highlights.insert(
-            HighlightEntity(lawId = lawId, section = SectionKey.SUMMARY, start = 5, end = 9, color = "gold"),
+
+        assertEquals(
+            "both marks, when neither filter is set",
+            2,
+            annotations.observeFiltered(null, null).first().size,
         )
-        highlights.delete(drop)
-        val left = highlights.observeForLaw(lawId).first().map { it.id }
-        assertEquals(listOf(keep), left)
+        assertEquals(
+            "a NULL type filter alone must not hide anything",
+            2,
+            annotations.observeFiltered(null, "gold").first().size,
+        )
+    }
+
+    @Test
+    fun theTypeFilterNarrowsWithoutHidingTheRest() = runBlocking {
+        annotations.insert(mark(createdAt = 1))
+        annotations.insert(mark(type = AnnotationType.Note.wire, note = "n", createdAt = 2))
+
+        assertEquals(1, annotations.observeFiltered("highlight", null).first().size)
+        assertEquals(1, annotations.observeFiltered("note", null).first().size)
+        // 'mixed' is the stored-never sentinel for "everything".
+        assertEquals(2, annotations.observeFiltered("mixed", null).first().size)
+    }
+
+    @Test
+    fun theColourFilterNarrowsTheList() = runBlocking {
+        annotations.insert(mark(color = "gold", createdAt = 1))
+        annotations.insert(mark(color = "crimson", createdAt = 2))
+
+        assertEquals(1, annotations.observeFiltered(null, "gold").first().size)
+        assertEquals(2, annotations.observeFiltered(null, null).first().size)
+    }
+
+    @Test
+    fun deleteRemovesOnlyThatMark() = runBlocking {
+        val keep = annotations.insert(mark(section = SectionKey.CORE, start = 0, end = 3))
+        val drop = annotations.insert(mark(section = SectionKey.SUMMARY, start = 5, end = 9))
+        annotations.delete(drop)
+        assertEquals(listOf(keep), annotations.observeForLaw(lawId).first().map { it.id })
     }
 
     @Test
@@ -185,7 +250,7 @@ class AnnotationDaoInstrumentedTest {
         assertEquals(3, stats.currentStreak)
         assertEquals(3, stats.longestStreak)
         assertEquals(2, stats.lawsReadToday)
-        assertEquals(1, stats.totalMinutes)
+        assertEquals(3, stats.totalDays)
     }
 
     @Test
@@ -197,14 +262,12 @@ class AnnotationDaoInstrumentedTest {
     }
 
     @Test
-    fun clearingProgressLeavesHighlightsAlone() = runBlocking {
-        highlights.insert(
-            HighlightEntity(lawId = lawId, section = SectionKey.CORE, start = 0, end = 3, color = "gold"),
-        )
+    fun clearingProgressLeavesAnnotationsAlone() = runBlocking {
+        annotations.insert(mark(section = SectionKey.CORE, start = 0, end = 3))
         progress.recordActivity(day = 20_000L, laws = 1, seconds = 10)
         progress.clear()
 
         assertTrue(progress.observeAllDays().first().isEmpty())
-        assertEquals(1, highlights.observeForLaw(lawId).first().size)
+        assertEquals(1, annotations.observeForLaw(lawId).first().size)
     }
 }

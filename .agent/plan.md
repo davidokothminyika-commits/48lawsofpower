@@ -156,3 +156,65 @@
   opens, which is a real option and is *not* a fake delay, but it has not been done because it
   changes when the database is touched.
 
+### Task_8_VerifyAndRepairAnnotations: Fix the minSdk crash, then verify the three never-tested annotation features.
+- **Status:** COMPLETED
+- **Acceptance Criteria:**
+  - No API 24/25 crash from `java.time`
+  - Note editor, My Notes list and undo exercised with real data on device
+  - Instrumented suite compiles and runs
+  - Unit + instrumented tests green; no crashes
+- **Notes:**
+  - **Desugaring.** `java.time` is API 26+, minSdk is 24, and it is used in `LawsViewModel`,
+    `Progress.kt` and `CodexScreen` - so the failure is at class load, not a recoverable call, and
+    the Daily Codex was simply dead on API 24/25. Fixed with `isCoreLibraryDesugaringEnabled` plus
+    `com.android.tools:desugar_jdk_libs` 2.1.5. Verified by finding `j$/time/LocalDate`,
+    `j$/time/ZoneId` and `j$/time/DayOfWeek` in the built DEX rather than trusting the flag.
+  - **My Notes was empty for everyone.** `observeFiltered` filtered colour with `:color = ''` while
+    `AnnotationsViewModel.review` passes `null` for "no filter" via `takeIf`. `NULL = ''` is NULL, not
+    true, so the whole WHERE was unknown and the query returned nothing. The type clause already used
+    `IS NULL`; the two were simply inconsistent. This only surfaces with a populated list, which is
+    exactly what "never verified" hid. Pinned by three new instrumented assertions.
+  - **The edit pencil navigated instead of editing.** `onEditNote` in the nav graph opened the law,
+    so `NoteEditorDialog` was unreachable from the only screen that lists notes - and the row tap
+    already opens the law, so the pencil duplicated it under a misleading label. It now opens the
+    editor pre-filled with the note and its quoted passage.
+  - **The instrumented suite had not compiled since v5.** `AnnotationDaoInstrumentedTest` still held
+    the old `HighlightDao` API. `assembleDebug` and `testDebugUnitTest` never compile this source
+    set, so the rot was invisible. Rewritten against `AnnotationDao`, keeping the original tests.
+  - Verified on device with four seeded marks: the list renders quotes, notes and type dots; the
+    editor opens pre-filled; delete drops 3 -> 2 and offers undo; undo restores 2 -> 3 and consumes
+    itself, matching the documented one-level design.
+  - 40 unit + 14 instrumented tests pass, 0 crashes.
+- **Note on method:** reading the app database with `cat databases/laws_database` returns a *stale*
+  snapshot while a `-wal` file exists. That twice looked like a real bug - empty annotations, and a
+  working undo. Device-state claims here come from screenshots; database claims need the `-wal` too.
+- **Still open:** the note editor's quoted passage did not appear above the field in the captured
+  frame. Unresolved - either it is genuinely clipped, or the capture caught the enter animation.
+  Worth a deliberate look before release, since the quote is the editor's whole reason to exist.
+
+### Task_9_OneTimeOnboarding: Show the entry screen once and keep the consent gate to first launch plus revocation.
+- **Status:** COMPLETED
+- **Acceptance Criteria:**
+  - Get Started appears on first launch only
+  - Terms & Privacy gate appears on first launch and on revocation only
+  - A returning launch goes straight to the Dossier
+  - Build and tests green
+- **Notes:**
+  - The entry screen was the nav graph's unconditional `startDestination`, so every cold start began
+    with it. It is now chosen: `startDestination = if (startAtDossier) DossierRoute else SplashRoute`,
+    driven by a persisted `seen_intro` flag in the settings store.
+  - **The flag is `StateFlow<Boolean?>`, not `Boolean`,** and that is the load-bearing detail. The
+    start destination must be picked before the graph composes, so "not read yet" and "read, and the
+    answer is false" cannot collapse into one value: defaulting to false would flash Get Started at
+    every returning reader, defaulting to true would skip it on a genuine first launch. `MainActivity`
+    holds the graph on the loading state until it resolves.
+  - `leftSplash` stays as in-session state and only governs the bottom bar; persistence is what makes
+    the entry screen a first-run screen rather than a launch screen.
+  - Verified on device from `pm clear`: gate -> accept -> Get Started -> Dossier -> force-stop ->
+    relaunch goes straight to the Dossier with neither screen. Revocation returning to the gate was
+    verified separately via Profile > Withdraw.
+- **Environment note:** this device repeatedly loses taps - a media player and a Google assistant
+  overlay take the foreground mid-run, processes freeze, and `input tap` events are sometimes
+  delivered to the *next* window. Several apparent bugs during this work were that, not the app.
+  Each was confirmed by checking `mCurrentFocus` or the store file before believing a screenshot.
+

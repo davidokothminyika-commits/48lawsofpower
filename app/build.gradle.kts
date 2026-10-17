@@ -70,6 +70,11 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+        // `java.time` is API 26+. minSdk is 24 and the app uses it in three places - the Daily
+        // Codex's day index, Progress.todayEpochDay, and the Codex screen's date formatting. Left
+        // undesugared, all three fail at *class load* on API 24/25, which means the Daily Codex is
+        // dead on those devices rather than degraded. See the desugar dependency below.
+        isCoreLibraryDesugaringEnabled = true
     }
     buildFeatures {
         compose = true
@@ -84,6 +89,7 @@ ksp {
 }
 
 dependencies {
+    coreLibraryDesugaring(libs.android.desugar.jdk.libs)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.accompanist.permissions)
     implementation(libs.androidx.activity.compose)

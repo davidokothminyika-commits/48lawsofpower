@@ -232,13 +232,20 @@ interface AnnotationDao {
      * Filtering is done in SQL rather than in Kotlin. A reader with a few hundred marks would fit
      * in memory either way, but the query is the only version that stays correct when the list
      * grows, and it keeps the composable from holding a full table it immediately discards.
+     *
+     * Both filters are nullable and both use NULL to mean "no filter" - `AnnotationsViewModel.review`
+     * passes `takeIf`, so the default unfiltered state arrives as `(null, null)`. The colour clause
+     * must therefore be `:color IS NULL` and not `:color = ''`: with a NULL parameter `NULL = ''` is
+     * NULL rather than true, which makes the whole WHERE unknown and returns **no rows at all**. That
+     * left the review screen empty for every reader on the default filter, and nothing had been
+     * seeded to make it visible. The type clause already got this right; the two were inconsistent.
      */
     @Query(
         """
         SELECT a.*, l.law_number AS law_number, l.title AS law_title
         FROM annotations a JOIN laws l ON l.id = a.law_id
         WHERE (:type IS NULL OR :type = 'mixed' OR a.type = :type)
-          AND (:color = '' OR a.color = :color)
+          AND (:color IS NULL OR a.color = :color)
         ORDER BY a.created_at DESC, a.id DESC
         """,
     )

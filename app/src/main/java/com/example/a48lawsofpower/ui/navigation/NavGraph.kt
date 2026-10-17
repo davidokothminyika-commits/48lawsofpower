@@ -39,6 +39,8 @@ import com.example.a48lawsofpower.ui.annotations.AnnotationsViewModel
 import com.example.a48lawsofpower.ui.legal.LegalViewModel
 import com.example.a48lawsofpower.ui.settings.SettingsViewModel
 import com.example.a48lawsofpower.ui.screens.AnnotationReviewScreen
+import com.example.a48lawsofpower.data.AnnotationWithLaw
+import com.example.a48lawsofpower.ui.components.NoteEditorDialog
 import com.example.a48lawsofpower.ui.screens.CodexScreen
 import com.example.a48lawsofpower.ui.screens.DossierScreen
 import com.example.a48lawsofpower.ui.screens.LawDetailScreen
@@ -83,6 +85,7 @@ fun AppNavGraph(
     annotationsViewModel: AnnotationsViewModel,
     settingsViewModel: SettingsViewModel,
     profileViewModel: ProfileViewModel,
+    startAtDossier: Boolean,
 ) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -127,12 +130,16 @@ fun AppNavGraph(
     // is already drawing the splash, so both the "is it the splash" check and the tab lookup read
     // the same stale entry and disagree with what is actually on screen. Tracking that the reader
     // has left the splash cannot go stale that way.
-    var leftSplash by rememberSaveable { mutableStateOf(false) }
+    // Whether the entry screen has been dismissed - or, for a returning reader, was never shown at
+    // all. Seeded from [startAtDossier]: when the splash is skipped nothing will ever set this to
+    // true, so it has to start true, or the bottom bar is suppressed on every launch after the first.
+    // When the splash *is* shown it starts false and is set by Get Started.
+    var splashDismissed by rememberSaveable(startAtDossier) { mutableStateOf(startAtDossier) }
     val haptics = rememberHaptics()
 
     Scaffold(
         bottomBar = {
-            if (leftSplash && activeTab != null) {
+            if (splashDismissed && activeTab != null) {
                 CodexBottomBar(
                     current = activeTab,
                     onSelect = { destination ->
@@ -146,7 +153,10 @@ fun AppNavGraph(
         Box(Modifier.fillMaxSize()) {
             NavHost(
                 navController = navController,
-                startDestination = SplashRoute,
+                // The entry screen is a first-run screen, not a launch screen. Returning readers go
+                // straight to the Dossier; `MainActivity` holds the graph back until the persisted
+                // flag has actually been read, so this never has to guess and change its mind.
+                startDestination = if (startAtDossier) DossierRoute else SplashRoute,
                 modifier = Modifier.fillMaxSize(),
             ) {
                 composable<SplashRoute>(
@@ -165,7 +175,10 @@ fun AppNavGraph(
                     // splash itself, which removes it from the back stack entirely.
                     SplashScreen(
                         onGetStarted = {
-                            leftSplash = true
+                            splashDismissed = true
+                            // Persisted, not just remembered: this is the difference between the
+                            // entry screen appearing on first launch and on every launch.
+                            settingsViewModel.markIntroSeen()
                             navController.navigate(DossierRoute) {
                                 popUpTo(SplashRoute) { inclusive = true }
                             }
@@ -209,20 +222,36 @@ fun AppNavGraph(
                 }
 
                 composable<NotesRoute> {
+        var editingNote by remember { mutableStateOf<AnnotationWithLaw?>(null) }
                     AnnotationReviewScreen(
                         annotations = allAnnotations,
                         filter = annotationFilter,
                         canUndo = lastDeleted != null,
                         onFilterChange = annotationsViewModel::setFilter,
                         onOpenLaw = { number -> navController.openLaw(number, viewModel) },
-                        onEditNote = { row ->
-                            viewModel.loadLawDetail(row.lawNumber)
-                            navController.openLaw(row.lawNumber, viewModel)
-                        },
+                        onEditNote = { row -> editingNote = row },
                         onDelete = annotationsViewModel::delete,
                         onUndo = annotationsViewModel::undoDelete,
                         contentPadding = innerPadding,
                     )
+
+                    // The review screen's edit affordance opens the real editor, pre-filled with
+                    // the mark's note and its quoted passage. It used to navigate to the law
+                    // instead, which meant the editor was unreachable from the only screen where
+                    // notes are listed - the row tap already opens the law, so the pencil had
+                    // nothing to add by doing it again.
+                    editingNote?.let { row ->
+                        NoteEditorDialog(
+                            quoted = row.anchorText,
+                            lawTitle = row.lawTitle,
+                            initialNote = row.note,
+                            onSave = { text ->
+                                annotationsViewModel.editNote(row.id, text)
+                                editingNote = null
+                            },
+                            onDismiss = { editingNote = null },
+                        )
+                    }
                 }
 
                 composable<LibraryRoute> {

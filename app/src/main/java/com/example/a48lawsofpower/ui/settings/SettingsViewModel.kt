@@ -3,6 +3,7 @@ package com.example.a48lawsofpower.ui.settings
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -43,8 +44,27 @@ class SettingsStore(private val context: Context) {
         context.settingsDataStore.edit { it[KeyThemeMode] = mode.name }
     }
 
+    /**
+     * Whether the reader has dismissed the entry screen.
+     *
+     * Nullable, and that is the whole point of the type. The start destination of the nav graph has
+     * to be chosen before the graph composes, so "not read yet" and "read, and the answer is false"
+     * cannot be the same value - defaulting to false would flash the entry screen at everyone on
+     * every cold start, and defaulting to true would skip it for a genuine first launch.
+     */
+    val hasSeenIntro: Flow<Boolean> = context.settingsDataStore.data
+        .catch { cause ->
+            if (cause is IOException) emit(emptyPreferences()) else throw cause
+        }
+        .map { it[KeySeenIntro] ?: false }
+
+    suspend fun markIntroSeen() {
+        context.settingsDataStore.edit { it[KeySeenIntro] = true }
+    }
+
     private companion object {
         val KeyThemeMode = stringPreferencesKey("theme_mode")
+        val KeySeenIntro = booleanPreferencesKey("seen_intro")
     }
 }
 
@@ -60,5 +80,16 @@ class SettingsViewModel(private val store: SettingsStore) : ViewModel() {
 
     fun setThemeMode(mode: ThemeMode) {
         viewModelScope.launch { store.setThemeMode(mode) }
+    }
+
+    /**
+     * Null until the first read lands. See [SettingsStore.hasSeenIntro] for why that is not a
+     * boolean with a default.
+     */
+    val hasSeenIntro: StateFlow<Boolean?> = store.hasSeenIntro
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    fun markIntroSeen() {
+        viewModelScope.launch { store.markIntroSeen() }
     }
 }
