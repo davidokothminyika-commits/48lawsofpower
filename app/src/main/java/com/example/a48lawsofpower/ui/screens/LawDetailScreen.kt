@@ -27,21 +27,32 @@ import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Bookmark
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.foundation.clickable
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.saveable.rememberSaveable
+import android.view.InputDevice
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.focusable
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
@@ -55,6 +66,7 @@ import com.example.a48lawsofpower.data.takeaways
 import com.example.a48lawsofpower.data.SectionKey
 import com.example.a48lawsofpower.ui.annotations.HighlightColor
 import com.example.a48lawsofpower.ui.components.AnnotationActionBar
+import kotlinx.coroutines.launch
 import com.example.a48lawsofpower.ui.components.NoteEditorDialog
 import com.example.a48lawsofpower.ui.speech.TtsReader
 import com.example.a48lawsofpower.ui.components.AnnotatableText
@@ -68,6 +80,7 @@ import com.example.a48lawsofpower.ui.theme.LawTheme
 import com.example.a48lawsofpower.ui.theme.Motion
 import com.example.a48lawsofpower.ui.theme.motionDuration
 import com.example.a48lawsofpower.ui.theme.ParchmentWhite
+import com.example.a48lawsofpower.ui.theme.CourtGrayElevated
 import com.example.a48lawsofpower.ui.theme.ShadowGray
 import com.example.a48lawsofpower.ui.theme.SovereignGold
 import com.example.a48lawsofpower.ui.theme.Spacing
@@ -133,8 +146,27 @@ fun LawDetailScreen(
         return
     }
 
+    val context = LocalContext.current
     val haptics = rememberHaptics()
     val pagerState = rememberPagerState(pageCount = { LawSection.entries.size })
+    val shortcutFocus = remember { FocusRequester() }
+    // onKeyEvent is not a suspend context, but paging between sections is animated. The scope is
+    // tied to composition, so a page animation in flight when the reader closes is cancelled.
+    val shortcutScope = rememberCoroutineScope()
+    var showShortcutHint by rememberSaveable { mutableStateOf(false) }
+    // Enumerating InputDevice rather than reading Configuration.keyboard: KEYBOARD_NOKEY is
+    // @hide, and the public alternatives all mislead. WindowInsetsCompat.ime() reports a soft
+    // keyboard, which is the opposite of what is being asked, and guessing from screen size is
+    // wrong because a tablet and a phone in landscape both report large and only one has keys.
+    val hasKeyboard = remember {
+        InputDevice.getDeviceIds().any { id ->
+            InputDevice.getDevice(id)?.isExternal == true &&
+                InputDevice.getDevice(id)?.supportsSource(InputDevice.SOURCE_KEYBOARD) == true
+        }
+    }
+    LaunchedEffect(hasKeyboard) {
+        if (hasKeyboard) showShortcutHint = true
+    }
     // Active selection as start..end in the section it belongs to; -1,-1 means nothing selected.
     var selectionStart by remember { mutableStateOf(-1) }
     var selectionEnd by remember { mutableStateOf(-1) }
@@ -155,7 +187,59 @@ fun LawDetailScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(MaterialTheme.colorScheme.background)
+            // Focusable so the reader can take hardware keys. Without a request the key event
+            // chain has nothing to deliver to here and the shortcuts silently never fire.
+            .focusRequester(shortcutFocus)
+            .focusable()
+            .onKeyEvent { event ->
+                // Consume only keys we act on, so Back and volume still reach the system.
+                when (shortcutFor(event.key, event.type)) {
+                    ReaderShortcut.PreviousSection -> {
+                        if (pagerState.currentPage > 0) {
+                            shortcutScope.launch {
+                                pagerState.animateScrollToPage(pagerState.currentPage - 1)
+                            }
+                        }
+                        true
+                    }
+
+                    ReaderShortcut.NextSection -> {
+                        if (pagerState.currentPage < LawSection.entries.lastIndex) {
+                            shortcutScope.launch {
+                                pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                            }
+                        }
+                        true
+                    }
+
+                    ReaderShortcut.ToggleSpeech -> {
+                        val reader = speech
+                        if (reader != null && reader.state != TtsReader.State.Unavailable) {
+                            if (reader.state == TtsReader.State.Speaking) {
+                                reader.stop()
+                            } else {
+                                reader.play(LawSection.entries[pagerState.currentPage].speech(law))
+                            }
+                            true
+                        } else {
+                            false
+                        }
+                    }
+
+                    ReaderShortcut.ToggleRead -> {
+                        onToggleRead()
+                        true
+                    }
+
+                    ReaderShortcut.ToggleBookmark -> {
+                        onToggleBookmark()
+                        true
+                    }
+
+                    null -> false
+                }
+            },
     ) {
         HorizontalPager(
             state = pagerState,
@@ -212,6 +296,26 @@ fun LawDetailScreen(
                 .align(Alignment.TopCenter)
                 .onSizeChanged { topBarHeight = it.height.dp },
         )
+
+        // Only when a keyboard is actually attached, and dismissible: a reader with a keyboard
+        // does not need to be reminded of the same four keys on every law.
+        if (showShortcutHint) {
+            Card(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = topBarHeight + Spacing.xs, start = Spacing.md, end = Spacing.md)
+                    .clickable { showShortcutHint = false },
+                colors = CardDefaults.cardColors(containerColor = CourtGrayElevated),
+                shape = RoundedCornerShape(8.dp),
+            ) {
+                Text(
+                    text = shortcutHint(hasKeyboard = true).orEmpty(),
+                    style = LawTheme.typography.bodySecondary,
+                    color = ShadowGray,
+                    modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xs),
+                )
+            }
+        }
 
         noteTarget?.let { (section, width) ->
             val quoted = SectionKey.textOf(law, section).let { t ->
