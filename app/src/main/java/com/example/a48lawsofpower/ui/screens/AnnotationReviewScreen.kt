@@ -158,38 +158,114 @@ fun AnnotationReviewScreen(
 
 @Composable
 private fun FilterRow(filter: AnnotationFilter, onFilterChange: (AnnotationFilter) -> Unit) {
-    LazyRow(
-        contentPadding = PaddingValues(horizontal = Spacing.md, vertical = Spacing.xs),
-        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+    Column {
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = Spacing.md, vertical = Spacing.xs),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+        ) {
+            item(key = "type-mixed") {
+                FilterPill(
+                    label = "All",
+                    selected = filter.type == AnnotationType.MIXED,
+                    onClick = { onFilterChange(filter.copy(type = AnnotationType.MIXED)) },
+                )
+            }
+            item(key = "type-highlight") {
+                FilterPill(
+                    label = "Highlights",
+                    selected = filter.type == AnnotationType.Highlight.wire,
+                    onClick = { onFilterChange(filter.copy(type = AnnotationType.Highlight.wire)) },
+                )
+            }
+            item(key = "type-note") {
+                FilterPill(
+                    label = "Notes",
+                    selected = filter.type == AnnotationType.Note.wire,
+                    onClick = { onFilterChange(filter.copy(type = AnnotationType.Note.wire)) },
+                )
+            }
+            item(key = "type-bookmark") {
+                FilterPill(
+                    label = "Bookmarks",
+                    selected = filter.type == AnnotationType.Bookmark.wire,
+                    onClick = { onFilterChange(filter.copy(type = AnnotationType.Bookmark.wire)) },
+                )
+            }
+        }
+
+        // Colour row.
+        //
+        // Composes with the type row rather than replacing it - filter.copy(type = ...) on each
+        // pill leaves [AnnotationFilter.color] alone, so "green highlights" is reachable by
+        // picking both, which is what a reader sorting their own marks actually wants.
+        //
+        // Notes and bookmarks are not colourable, so the row is hidden unless highlights are in
+        // scope. Offering colour while "Notes" is selected would be a control that can only ever
+        // return an empty list.
+        val colourInScope = filter.type == AnnotationType.MIXED || filter.type == AnnotationType.Highlight.wire
+        if (colourInScope) {
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = Spacing.md, vertical = Spacing.xs),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                item(key = "colour-any") {
+                    FilterPill(
+                        label = "Any colour",
+                        selected = filter.color.isBlank(),
+                        onClick = { onFilterChange(filter.copy(color = "")) },
+                    )
+                }
+                items(
+                    items = HighlightColor.entries.toList(),
+                    key = { "colour-${it.id}" },
+                ) { option ->
+                    ColourFilterSwatch(
+                        color = option,
+                        selected = filter.color == option.id,
+                        onClick = {
+                            // Tapping the active colour clears it, so the row doubles as its own
+                            // off switch and the reader never has to hunt for "Any colour".
+                            onFilterChange(
+                                filter.copy(
+                                    color = if (filter.color == option.id) "" else option.id,
+                                ),
+                            )
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** One colour in the filter row. Shows the mark's own stroke, not the translucent fill. */
+@Composable
+private fun ColourFilterSwatch(
+    color: HighlightColor,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val stroke = HighlightStrokes[color] ?: SovereignGold
+    Box(
+        modifier = Modifier
+            .size(34.dp)
+            .clip(CircleShape)
+            .background(CourtGray)
+            .border(
+                width = if (selected) 2.dp else 1.dp,
+                color = if (selected) ParchmentWhite else HairlineBorder,
+                shape = CircleShape,
+            )
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
     ) {
-        item(key = "type-mixed") {
-            FilterPill(
-                label = "All",
-                selected = filter.type == AnnotationType.MIXED,
-                onClick = { onFilterChange(filter.copy(type = AnnotationType.MIXED)) },
-            )
-        }
-        item(key = "type-highlight") {
-            FilterPill(
-                label = "Highlights",
-                selected = filter.type == AnnotationType.Highlight.wire,
-                onClick = { onFilterChange(filter.copy(type = AnnotationType.Highlight.wire)) },
-            )
-        }
-        item(key = "type-note") {
-            FilterPill(
-                label = "Notes",
-                selected = filter.type == AnnotationType.Note.wire,
-                onClick = { onFilterChange(filter.copy(type = AnnotationType.Note.wire)) },
-            )
-        }
-        item(key = "type-bookmark") {
-            FilterPill(
-                label = "Bookmarks",
-                selected = filter.type == AnnotationType.Bookmark.wire,
-                onClick = { onFilterChange(filter.copy(type = AnnotationType.Bookmark.wire)) },
-            )
-        }
+        Box(
+            modifier = Modifier
+                .size(18.dp)
+                .clip(CircleShape)
+                .background(stroke),
+        )
     }
 }
 
