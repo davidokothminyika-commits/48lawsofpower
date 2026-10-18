@@ -270,4 +270,50 @@ class AnnotationDaoInstrumentedTest {
         assertTrue(progress.observeAllDays().first().isEmpty())
         assertEquals(1, annotations.observeForLaw(lawId).first().size)
     }
+
+    // ---- bookmarks -------------------------------------------------------------------
+    //
+    // The bookmark path had no coverage at all: the Bookmarks filter rendered in the UI with
+    // nothing able to create one. These cover the query the UI toggle actually depends on.
+
+    @Test
+    fun aBookmarkIsFoundByLawAndSection() = runBlocking {
+        annotations.insert(
+            mark(type = AnnotationType.Bookmark.wire, start = 0, end = 0, anchor = "", color = ""),
+        )
+        val found = annotations.findBookmark(lawId, SectionKey.CORE)
+        assertNotNull("bookmark should be retrievable for its own section", found)
+        assertEquals(AnnotationType.Bookmark.wire, found!!.type)
+    }
+
+    @Test
+    fun aBookmarkIsNotFoundInAnotherSection() = runBlocking {
+        annotations.insert(
+            mark(type = AnnotationType.Bookmark.wire, start = 0, end = 0, anchor = "", color = ""),
+        )
+        // A bookmark belongs to the section it was made in, so a toggle in a different section
+        // must not silently un-bookmark the first one.
+        assertNull(annotations.findBookmark(lawId, SectionKey.REVERSAL))
+    }
+
+    @Test
+    fun aHighlightIsNeverMistakenForABookmark() = runBlocking {
+        annotations.insert(mark(section = SectionKey.CORE))
+        assertNull(annotations.findBookmark(lawId, SectionKey.CORE))
+    }
+
+    @Test
+    fun theBookmarksFilterReturnsOnlyBookmarks() = runBlocking {
+        annotations.insert(mark(section = SectionKey.CORE))
+        annotations.insert(mark(type = AnnotationType.Note.wire, note = "why?", section = SectionKey.CORE))
+        annotations.insert(
+            mark(type = AnnotationType.Bookmark.wire, start = 0, end = 0, anchor = "", color = ""),
+        )
+
+        val onlyBookmarks = annotations
+            .observeFiltered(AnnotationType.Bookmark.wire, null)
+            .first()
+        assertEquals(1, onlyBookmarks.size)
+        assertEquals(AnnotationType.Bookmark.wire, onlyBookmarks[0].type)
+    }
 }

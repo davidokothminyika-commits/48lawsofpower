@@ -3,6 +3,9 @@ package com.example.a48lawsofpower.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -142,42 +145,66 @@ fun AnnotationActionBar(
     onColorChange: (HighlightColor) -> Unit,
     onHighlight: () -> Unit,
     onAddNote: () -> Unit,
+    onToggleBookmark: () -> Unit,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
+    // Two rows rather than one.
+    //
+    // A 360dp bar cannot hold five 26dp swatches plus four text actions: the single-row version
+    // measured out near 380dp, so the last action was being clipped on a 720px screen - the same
+    // class of bug as the truncated tab labels.
+    //
+    // Bookmark is on its own row because it is not a passage action. A bookmark flags a law or a
+    // section, so it does not depend on the selection the other three do.
+    Column(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(Spacing.md))
             .background(CourtGrayElevated)
             .border(1.dp, HairlineBorder, RoundedCornerShape(Spacing.md))
             .padding(horizontal = Spacing.sm, vertical = Spacing.sm),
-        verticalAlignment = Alignment.CenterVertically,
     ) {
-        HighlightColor.entries.forEach { option ->
-            val stroke = HighlightStrokes[option] ?: SovereignGold
-            Box(
-                modifier = Modifier
-                    .size(26.dp)
-                    .clip(RoundedCornerShape(13.dp))
-                    .background(stroke)
-                    .border(
-                        width = if (option == selectedColor) 2.dp else 0.dp,
-                        color = if (option == selectedColor) Color.White else Color.Transparent,
-                        shape = RoundedCornerShape(13.dp),
-                    )
-                    .clickable { onColorChange(option) },
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            HighlightColor.entries.forEach { option ->
+                val stroke = HighlightStrokes[option] ?: SovereignGold
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(RoundedCornerShape(13.dp))
+                        .background(stroke)
+                        .border(
+                            width = if (option == selectedColor) 2.dp else 0.dp,
+                            color = if (option == selectedColor) Color.White else Color.Transparent,
+                            shape = RoundedCornerShape(13.dp),
+                        )
+                        .clickable { onColorChange(option) },
+                )
+                Spacer(Modifier.width(Spacing.xs))
+            }
+            Spacer(Modifier.weight(1f))
+            // Naming the colour makes the swatches mean something before anything is marked,
+            // which is the whole point of colour-coding them by intent.
+            Text(
+                text = selectedColor.label,
+                color = ShadowGray,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(end = Spacing.xs),
             )
-            Spacer(Modifier.width(Spacing.xs))
         }
 
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.height(Spacing.xs))
 
-        BarAction("Note", onAddNote)
-        Spacer(Modifier.width(Spacing.sm))
-        BarAction("Cancel", onCancel, tint = ShadowGray)
-        Spacer(Modifier.width(Spacing.sm))
-        BarAction("Highlight", onHighlight, tint = SovereignGold)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            BarAction("Note", onAddNote)
+            BarAction("Bookmark", onToggleBookmark)
+            BarAction("Cancel", onCancel, tint = ShadowGray)
+            BarAction("Highlight", onHighlight, tint = SovereignGold)
+        }
     }
 }
 

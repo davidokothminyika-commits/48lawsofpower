@@ -355,6 +355,10 @@ fun AppNavGraph(
                                 annotationsViewModel.highlight(id, section, start, end, text, color)
                             }
                         },
+                        onToggleSectionBookmark = { section ->
+                            val id = selectedLaw?.id
+                            if (id != null) annotationsViewModel.toggleBookmark(id, section)
+                        },
                         onAddNote = { section, start, end, text, note ->
                             val id = selectedLaw?.id
                             if (id != null) {

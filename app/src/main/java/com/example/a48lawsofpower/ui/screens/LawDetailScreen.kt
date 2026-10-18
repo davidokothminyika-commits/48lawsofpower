@@ -94,6 +94,7 @@ fun LawDetailScreen(
     annotations: List<AnnotationEntity>,
     onHighlight: (section: String, start: Int, end: Int, text: String, color: HighlightColor) -> Unit,
     onAddNote: (section: String, start: Int, end: Int, text: String, note: String) -> Unit,
+    onToggleSectionBookmark: (section: String) -> Unit,
     onBackClick: () -> Unit,
     onToggleBookmark: () -> Unit,
     onToggleRead: () -> Unit,
@@ -218,6 +219,12 @@ fun LawDetailScreen(
                         SectionKey.textOf(law, key),
                         pendingColor,
                     )
+                    selectionStart = -1
+                    selectionEnd = -1
+                },
+                onToggleBookmark = {
+                    val key = LawSection.entries[pagerState.currentPage].key
+                    onToggleSectionBookmark(key)
                     selectionStart = -1
                     selectionEnd = -1
                 },
