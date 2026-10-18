@@ -38,6 +38,7 @@ import com.example.a48lawsofpower.ui.components.rememberHaptics
 import com.example.a48lawsofpower.ui.annotations.AnnotationsViewModel
 import com.example.a48lawsofpower.ui.legal.LegalViewModel
 import com.example.a48lawsofpower.ui.settings.SettingsViewModel
+import com.example.a48lawsofpower.ui.speech.TtsReader
 import com.example.a48lawsofpower.ui.screens.AnnotationReviewScreen
 import com.example.a48lawsofpower.data.AnnotationWithLaw
 import com.example.a48lawsofpower.ui.components.NoteEditorDialog
@@ -89,6 +90,7 @@ fun AppNavGraph(
     settingsViewModel: SettingsViewModel,
     profileViewModel: ProfileViewModel,
     readingTrackerViewModel: ReadingTrackerViewModel,
+    speech: TtsReader? = null,
     startAtDossier: Boolean,
 ) {
     val navController = rememberNavController()
@@ -370,6 +372,7 @@ fun AppNavGraph(
                             navController.popBackStack()
                         },
                         onToggleBookmark = { viewModel.toggleBookmark(route.lawNumber) },
+                        speech = speech,
                         onToggleRead = {
                             // Optimistic read is mirrored here from the loaded law, so the toggle is
                             // reversible rather than a one-way stamp.

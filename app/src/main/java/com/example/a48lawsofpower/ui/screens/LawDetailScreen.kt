@@ -24,7 +24,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Bookmark
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -52,6 +56,7 @@ import com.example.a48lawsofpower.data.SectionKey
 import com.example.a48lawsofpower.ui.annotations.HighlightColor
 import com.example.a48lawsofpower.ui.components.AnnotationActionBar
 import com.example.a48lawsofpower.ui.components.NoteEditorDialog
+import com.example.a48lawsofpower.ui.speech.TtsReader
 import com.example.a48lawsofpower.ui.components.AnnotatableText
 import com.example.a48lawsofpower.ui.components.ActionIconButton
 import com.example.a48lawsofpower.ui.components.AnalysisBlock
@@ -69,10 +74,26 @@ import com.example.a48lawsofpower.ui.theme.Spacing
 
 /** The four core sub-sections every law is broken into. */
 private enum class LawSection(val eyebrow: String, val key: String) {
-    Takeaways("Key Takeaways", SectionKey.CORE),
+    Takeaways("Key Takeaways", SectionKey.TAKEAWAYS),
     Core("Section I - The Core Law & Judgement", SectionKey.CORE),
     History("Section II - Transgression & Observance", SectionKey.CORE),
-    Reversal("Section III - Reversal", SectionKey.REVERSAL),
+    Reversal("Section III - Reversal", SectionKey.REVERSAL);
+
+    /**
+     * What speech should read while this section is on screen.
+     *
+     * Not [key]: the History page shows both observance and transgression, and reading them
+     * back to back is what a reader listening to that page actually wants. Takeaways are read as
+     * separate lines, since each is a bullet rather than prose.
+     */
+    fun speech(law: com.example.a48lawsofpower.data.LawEntity): String = when (this) {
+        Takeaways -> law.keyTakeaways.split('\n').filter { it.isNotBlank() }.joinToString(". ") { it.trim().removeSuffix(".") + "." }
+        Core -> law.core
+        History -> listOf(law.observance, law.transgression)
+            .filter { it.isNotBlank() }
+            .joinToString("\n\n")
+        Reversal -> law.reversal
+    }
 }
 
 /**
@@ -99,6 +120,8 @@ fun LawDetailScreen(
     onToggleBookmark: () -> Unit,
     onToggleRead: () -> Unit,
     modifier: Modifier = Modifier,
+    speech: TtsReader? = null,
+    speechTick: Int = 0,
 ) {
     if (law == null) {
         LoadingState(
@@ -157,6 +180,7 @@ fun LawDetailScreen(
             SectionPage(
                 law = law,
                 annotations = annotations,
+                speechRange = if (speech?.state == TtsReader.State.Speaking) speech?.currentRange() else null,
                 section = LawSection.entries[page],
                 onSelectionChanged = { s, e ->
                     selectionStart = s
@@ -176,6 +200,14 @@ fun LawDetailScreen(
             onBackClick = onBackClick,
             onToggleBookmark = onToggleBookmark,
             onToggleRead = onToggleRead,
+            onToggleSpeech = {
+                if (speech == null) return@ReaderTopBar
+                if (speech.state == TtsReader.State.Speaking) speech.stop() else speech.play(
+                    LawSection.entries[pagerState.currentPage].speech(law),
+                )
+            },
+            speechAvailable = speech != null && speech.state != TtsReader.State.Unavailable,
+            speaking = speech?.state == TtsReader.State.Speaking,
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .onSizeChanged { topBarHeight = it.height.dp },
@@ -256,6 +288,7 @@ fun LawDetailScreen(
 private fun SectionPage(
     law: LawEntity,
     annotations: List<AnnotationEntity>,
+    speechRange: IntRange?,
     section: LawSection,
     onSelectionChanged: (Int, Int) -> Unit,
     reveal: Float,
@@ -332,6 +365,7 @@ private fun SectionPage(
                 if (law.core.isNotBlank()) {
                     item(key = "core-judgement") {
                         AnnotatableText(
+                            speechRange = speechRange,
                             text = law.core,
                             annotations = annotations,
                             onSelectionChanged = onSelectionChanged,
@@ -381,6 +415,7 @@ private fun SectionPage(
             LawSection.Reversal -> {
                 item(key = "reversal") {
                     AnnotatableText(
+                        speechRange = speechRange,
                         text = law.reversal.ifBlank {
                             "Every law has a reversal. Read it before you act on the law itself."
                         },
@@ -401,6 +436,9 @@ private fun ReaderTopBar(
     onBackClick: () -> Unit,
     onToggleBookmark: () -> Unit,
     onToggleRead: () -> Unit,
+    onToggleSpeech: () -> Unit,
+    speechAvailable: Boolean,
+    speaking: Boolean,
     modifier: Modifier = Modifier,
 ) {
     // Resolved out here because drawWithContent runs in DrawScope, which is not @Composable and so
@@ -435,6 +473,16 @@ private fun ReaderTopBar(
             style = LawTheme.typography.lawIndex,
             color = ShadowGray,
         )
+        // Hidden entirely when the device has no usable speech engine, rather than shown
+        // disabled: a control that can never work is noise, and its absence is self-explanatory.
+        if (speechAvailable) {
+            ActionIconButton(
+                icon = if (speaking) Icons.Filled.Stop else Icons.Filled.PlayArrow,
+                contentDescription = if (speaking) "Stop reading aloud" else "Read aloud",
+                active = speaking,
+                onClick = onToggleSpeech,
+            )
+        }
         ActionIconButton(
             icon = if (law.read) Icons.Outlined.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
             contentDescription = if (law.read) {

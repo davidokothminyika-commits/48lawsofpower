@@ -109,6 +109,7 @@ data class AnnotationEntity(
  * stored marks are not. Names survive that.
  */
 object SectionKey {
+    const val TAKEAWAYS = "takeaways"
     const val CORE = "core"
     const val SUMMARY = "summary"
     const val OBSERVANCE = "observance"
@@ -116,6 +117,7 @@ object SectionKey {
     const val REVERSAL = "reversal"
 
     fun textOf(law: LawEntity, section: String): String = when (section) {
+        TAKEAWAYS -> law.keyTakeaways
         CORE -> law.core
         SUMMARY -> law.summary
         OBSERVANCE -> law.observance

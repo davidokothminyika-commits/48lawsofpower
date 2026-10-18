@@ -84,9 +84,38 @@ fun AnnotatableText(
     style: TextStyle,
     color: Color,
     modifier: Modifier = Modifier,
+    /** Character range currently being read aloud, for read-along highlighting. */
+    speechRange: IntRange? = null,
 ) {
     val spans = remember(text, annotations) { resolvePaintableSpans(text, annotations) }
-    val painted = remember(text, spans) { buildAnnotatedReaderText(text, spans) }
+
+    // Read-along is laid under the marks rather than over them. A spoken sentence should be
+    // findable but must not read as though the reader had highlighted it - the marks are stored
+    // rows and would end up in My Notes. Keeping the two signals visually distinct matters.
+    // SpanStyle is itself @Composable (it reads the ambient text direction), so it has to be built
+    // at composable level rather than inside the remember block below.
+    val speechStyle = androidx.compose.ui.text.SpanStyle(
+        background = SovereignGold.copy(alpha = 0.18f),
+    )
+
+    val painted = remember(text, spans, speechRange, speechStyle) {
+        if (speechRange == null || speechRange.isEmpty()) {
+            buildAnnotatedReaderText(text, spans)
+        } else {
+            val start = speechRange.first.coerceIn(0, text.length)
+            val end = speechRange.last.coerceIn(start, text.length)
+            if (end <= start) {
+                buildAnnotatedReaderText(text, spans)
+            } else {
+                // Re-built rather than copied: AnnotatedString has no addStyle, and re-appending
+                // paragraph-length text costs less than keeping a second representation around.
+                androidx.compose.ui.text.buildAnnotatedString {
+                    append(buildAnnotatedReaderText(text, spans))
+                    addStyle(speechStyle, start, end)
+                }
+            }
+        }
+    }
 
     val fieldState = rememberTextFieldState(initialText = text)
 

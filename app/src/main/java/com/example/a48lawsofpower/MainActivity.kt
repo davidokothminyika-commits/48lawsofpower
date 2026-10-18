@@ -20,6 +20,7 @@ import com.example.a48lawsofpower.legal.ConsentStatus
 import com.example.a48lawsofpower.legal.ConsentStore
 import com.example.a48lawsofpower.ui.LawsViewModel
 import com.example.a48lawsofpower.ui.annotations.AnnotationsViewModel
+import com.example.a48lawsofpower.ui.speech.TtsReader
 import com.example.a48lawsofpower.ui.legal.LegalViewModel
 import com.example.a48lawsofpower.ui.navigation.AppNavGraph
 import com.example.a48lawsofpower.ui.profile.ProfileViewModel
@@ -111,7 +112,17 @@ class MainActivity : ComponentActivity() {
         super.onStop()
     }
 
+    /**
+     * Owns the speech engine for the whole Activity.
+     *
+     * Created once rather than per-composition: [android.speech.tts.TextToSpeech] spins up a
+     * connection to the system engine, and re-creating it on every recomposition would restart
+     * speech mid-sentence. Released in onDestroy because the engine holds a system resource.
+     */
+    private var ttsReader: TtsReader? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        ttsReader = TtsReader(applicationContext)
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
@@ -150,6 +161,7 @@ class MainActivity : ComponentActivity() {
                                 profileViewModel = profileViewModel,
                                 readingTrackerViewModel = readingTrackerViewModel,
                                 startAtDossier = hasSeenIntro == true,
+                                speech = ttsReader,
                             )
                     }
                 }
