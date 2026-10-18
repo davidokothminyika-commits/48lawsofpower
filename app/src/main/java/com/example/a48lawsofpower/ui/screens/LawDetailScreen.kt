@@ -68,6 +68,9 @@ import com.example.a48lawsofpower.ui.annotations.HighlightColor
 import com.example.a48lawsofpower.ui.components.AnnotationActionBar
 import kotlinx.coroutines.launch
 import com.example.a48lawsofpower.ui.components.NoteEditorDialog
+import com.example.a48lawsofpower.ui.dictionary.Dictionary
+import com.example.a48lawsofpower.ui.dictionary.DictionarySheet
+import com.example.a48lawsofpower.ui.dictionary.Entry
 import com.example.a48lawsofpower.ui.speech.TtsReader
 import com.example.a48lawsofpower.ui.components.AnnotatableText
 import com.example.a48lawsofpower.ui.components.ActionIconButton
@@ -154,6 +157,12 @@ fun LawDetailScreen(
     // tied to composition, so a page animation in flight when the reader closes is cancelled.
     val shortcutScope = rememberCoroutineScope()
     var showShortcutHint by rememberSaveable { mutableStateOf(false) }
+
+    // Word tapped in the reader, and its lookup. The dictionary itself is loaded on first use and
+    // kept by its own singleton, so this holds only the result.
+    var lookedUpWord by remember { mutableStateOf<String?>(null) }
+    var lookedUpEntry by remember { mutableStateOf<Entry?>(null) }
+    var dictionaryReady by remember { mutableStateOf(false) }
     // Enumerating InputDevice rather than reading Configuration.keyboard: KEYBOARD_NOKEY is
     // @hide, and the public alternatives all mislead. WindowInsetsCompat.ime() reports a soft
     // keyboard, which is the opposite of what is being asked, and guessing from screen size is
@@ -265,6 +274,12 @@ fun LawDetailScreen(
                 law = law,
                 annotations = annotations,
                 speechRange = if (speech?.state == TtsReader.State.Speaking) speech?.currentRange() else null,
+                onWordTapped = { word ->
+                    if (word.isBlank()) return@SectionPage
+                    lookedUpWord = word
+                    lookedUpEntry = Dictionary.get(context).lookup(word)
+                    dictionaryReady = true
+                },
                 section = LawSection.entries[page],
                 onSelectionChanged = { s, e ->
                     selectionStart = s
@@ -275,6 +290,18 @@ fun LawDetailScreen(
                 modifier = Modifier.graphicsLayer {
                     translationY = (1f - revealProgress.value) * 10.dp.toPx()
                     alpha = revealProgress.value
+                },
+            )
+        }
+
+        lookedUpWord?.let { word ->
+            DictionarySheet(
+                word = word,
+                entry = lookedUpEntry,
+                dictionarySize = if (dictionaryReady) Dictionary.get(context).size else 0,
+                onDismiss = {
+                    lookedUpWord = null
+                    lookedUpEntry = null
                 },
             )
         }
@@ -393,6 +420,7 @@ private fun SectionPage(
     law: LawEntity,
     annotations: List<AnnotationEntity>,
     speechRange: IntRange?,
+    onWordTapped: (String) -> Unit,
     section: LawSection,
     onSelectionChanged: (Int, Int) -> Unit,
     reveal: Float,
@@ -473,6 +501,7 @@ private fun SectionPage(
                             text = law.core,
                             annotations = annotations,
                             onSelectionChanged = onSelectionChanged,
+                            onWordTapped = onWordTapped,
                             style = LawTheme.typography.bodyPrimary,
                             color = ParchmentWhite,
                             modifier = Modifier.padding(bottom = Spacing.lg),
@@ -525,6 +554,7 @@ private fun SectionPage(
                         },
                         annotations = annotations,
                         onSelectionChanged = onSelectionChanged,
+                        onWordTapped = onWordTapped,
                         style = LawTheme.typography.bodyPrimary,
                         color = ParchmentWhite,
                     )

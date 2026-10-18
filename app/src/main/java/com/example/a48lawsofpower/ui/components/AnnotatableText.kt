@@ -14,7 +14,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
+import androidx.compose.ui.input.pointer.positionChanged
+import android.view.ViewConfiguration
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.TextLayoutResult
+import com.example.a48lawsofpower.ui.dictionary.WordResolver
 import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material3.Text
 import androidx.compose.foundation.text.input.rememberTextFieldState
@@ -86,6 +95,8 @@ fun AnnotatableText(
     modifier: Modifier = Modifier,
     /** Character range currently being read aloud, for read-along highlighting. */
     speechRange: IntRange? = null,
+    /** A word was tapped, for dictionary lookup. Empty string when the tap missed the text. */
+    onWordTapped: (String) -> Unit = {},
 ) {
     val spans = remember(text, annotations) { resolvePaintableSpans(text, annotations) }
 
@@ -126,6 +137,11 @@ fun AnnotatableText(
 
     val fieldState = rememberTextFieldState(initialText = text)
 
+    // The layout of the *painted* text, captured so a tap can be turned into a character offset.
+    // This is the painted layer rather than the transparent field above it, because the two are
+    // separate composables with separate layouts and it is the painted glyphs the reader aimed at.
+    var layoutResult by remember(text, painted) { mutableStateOf<TextLayoutResult?>(null) }
+
     val selection = fieldState.selection
     LaunchedEffect(selection) {
         onSelectionChanged(selection.min, selection.max)
@@ -137,6 +153,7 @@ fun AnnotatableText(
             style = style,
             color = color,
             modifier = Modifier.fillMaxWidth(),
+            onTextLayout = { layoutResult = it },
         )
 
         // BasicTextField reads LocalTextToolbar and LocalTextSelectionColors directly, and nothing
@@ -162,7 +179,51 @@ fun AnnotatableText(
                 // Text underneath is what the reader actually reads.
                 textStyle = style.copy(color = Color.Transparent),
                 cursorBrush = SolidColor(Color.Transparent),
-                modifier = Modifier.matchParentSize(),
+                modifier = Modifier
+                    .matchParentSize()
+                    // Single tap resolves a word. Ordered before the long-press handler so the
+                    // long press still wins for its gesture, and returning false here lets the
+                    // long-press detector take over rather than both firing.
+                    .pointerInput(text) {
+                        // Observes in the FINAL pass, after BasicTextField has consumed the tap to
+                        // move its own cursor. detectTapGestures cannot be used here: the field is a
+                        // child, children get first refusal in the Main pass, and a read-only field
+                        // consumes every tap. Watching in Final sees the event either way.
+                        //
+                        // Only a tap with no intervening long press counts. Without that check the
+                        // long press that opens the annotation bar would also fire a lookup for
+                        // whatever word happened to be under the finger.
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            var sawLongPress = false
+                            var moved = false
+                            var elapsed = 0L
+
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Final)
+                                val change = event.changes.first()
+
+                                // Tracked across the whole gesture, not tested at the up event. A
+                                // plain tap reports no position change *at the moment of release* -
+                                // the finger did not move - so checking there rejects every tap.
+                                if (change.positionChanged()) moved = true
+
+                                if (event.changes.all { it.changedToUpIgnoreConsumed() }) {
+                                    if (!sawLongPress && !moved) {
+                                        onWordTapped(
+                                            WordResolver.wordAt(text, down.position, layoutResult),
+                                        )
+                                    }
+                                    break
+                                }
+
+                                elapsed = change.uptimeMillis - down.uptimeMillis
+                                if (elapsed > ViewConfiguration.getLongPressTimeout()) {
+                                    sawLongPress = true
+                                }
+                            }
+                        }
+                    },
             )
         }
     }
