@@ -92,10 +92,17 @@ fun AnnotatableText(
     // Read-along is laid under the marks rather than over them. A spoken sentence should be
     // findable but must not read as though the reader had highlighted it - the marks are stored
     // rows and would end up in My Notes. Keeping the two signals visually distinct matters.
-    // SpanStyle is itself @Composable (it reads the ambient text direction), so it has to be built
-    // at composable level rather than inside the remember block below.
+    // Deliberately a desaturated ivory rather than any palette colour.
+    //
+    // SovereignGold looked like the obvious choice here and was a bug: it is aliased to Crimson in
+    // Color.kt, so the spoken sentence came out the same hue as the Crimson highlight and the two
+    // signals became indistinguishable - a reader would reasonably conclude they had marked it
+    // themselves. Every colour in HighlightColor is saturated; a near-white wash is the one thing
+    // that cannot be mistaken for a saved mark.
+    //
+    // Built at composable level because SpanStyle is itself @Composable.
     val speechStyle = androidx.compose.ui.text.SpanStyle(
-        background = SovereignGold.copy(alpha = 0.18f),
+        background = Color(0xFFEDE8DC).copy(alpha = 0.22f),
     )
 
     val painted = remember(text, spans, speechRange, speechStyle) {
