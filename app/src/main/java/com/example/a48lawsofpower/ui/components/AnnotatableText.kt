@@ -103,25 +103,24 @@ fun AnnotatableText(
             modifier = Modifier.fillMaxWidth(),
         )
 
-        // Two ambients, both scoped to the capture layer:
-        //  - selection colours, because BasicTextField in this version has no selectionColors
-        //    parameter. Without this the handles render in the theme's primary, which is now a
-        //    dark crimson and reads as an error state rather than a selection.
-        //  - a no-op text toolbar. The platform toolbar offers Copy / Select all / Read aloud
-        //    and cannot be given app actions, so it is suppressed and replaced by
-        //    [AnnotationActionBar].
+        // BasicTextField reads LocalTextToolbar and LocalTextSelectionColors directly, and nothing
+        // in foundation provides either, so these two are the only inputs that can control the
+        // platform toolbar and the handle colour. Scoped here, to the capture layer alone, rather
+        // than around the whole composable: the painted Text does not need either.
         CompositionLocalProvider(
             LocalTextSelectionColors provides TextSelectionColors(
                 handleColor = SovereignGold,
                 backgroundColor = SovereignGold.copy(alpha = 0.28f),
             ),
+            // Suppresses the Copy / Select all / Read aloud toolbar, which cannot be given app
+            // actions and so cannot host the Highlight / Note / Bookmark bar instead.
             LocalTextToolbar provides NoOpTextToolbar,
         ) {
             BasicTextField(
                 state = fieldState,
                 enabled = true,
-                // Read-only so the field cannot claim keystrokes or accept edits; selection and the
-                // long-press gesture still work, which is the entire reason it is here.
+                // Read-only so the field cannot claim keystrokes or accept edits; selection and
+                // the long-press gesture still work, which is the entire reason it is here.
                 readOnly = true,
                 // Invisible glyphs, visible selection. The colour is what this layer draws; the
                 // Text underneath is what the reader actually reads.
