@@ -24,11 +24,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.IosShare
 import androidx.compose.material.icons.outlined.Undo
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,6 +44,9 @@ import com.example.a48lawsofpower.data.AnnotationType
 import com.example.a48lawsofpower.data.AnnotationWithLaw
 import com.example.a48lawsofpower.ui.annotations.HighlightColor
 import com.example.a48lawsofpower.ui.annotations.HighlightStrokes
+import com.example.a48lawsofpower.ui.annotations.buildExport
+import com.example.a48lawsofpower.ui.annotations.scopeNote
+import com.example.a48lawsofpower.ui.annotations.shareExport
 import com.example.a48lawsofpower.ui.theme.CourtGray
 import com.example.a48lawsofpower.ui.theme.CourtGrayElevated
 import com.example.a48lawsofpower.ui.theme.HairlineBorder
@@ -75,6 +80,8 @@ fun AnnotationReviewScreen(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(),
 ) {
+    val context = LocalContext.current
+
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
@@ -98,6 +105,32 @@ fun AnnotationReviewScreen(
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.weight(1f),
                     )
+                    // Always present, not only when there is something to export: a control
+                    // that appears and disappears with the data is harder to find than one that
+                    // is always there and explains itself when empty.
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(CourtGrayElevated)
+                            .clickable {
+                                shareExport(
+                                    context = context,
+                                    markdown = buildExport(
+                                        annotations = annotations,
+                                        scopeNote = filter.scopeNote(),
+                                    ),
+                                )
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            Icons.Outlined.IosShare,
+                            contentDescription = "Share my notes",
+                            tint = SovereignGold,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
                     if (canUndo) {
                         Box(
                             modifier = Modifier
