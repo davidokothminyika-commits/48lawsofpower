@@ -34,6 +34,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.a48lawsofpower.legal.LegalDocumentKind
@@ -205,6 +212,44 @@ fun LegalDocumentRow(
     }
 }
 
+/**
+ * Rebuilds a run of legal prose with its URLs made tappable.
+ *
+ * The contact clauses publish a bare `https://` address, and a bare address inside a Compose
+ * `Text` is not a link. `Text` opens a [LinkAnnotation.Url] through the platform `UriHandler`,
+ * which hands it to the browser, so the app itself still opens no connection of its own and
+ * needs no permission for it.
+ */
+private val HttpsPattern = Regex("https://\\S+")
+
+/**
+ * @param linkColor the accent to draw addresses in. Taken as a parameter rather than read from the
+ * theme inside, because the theme's colours are `@Composable` getters and this is a plain function.
+ */
+private fun linkified(text: String, linkColor: Color): AnnotatedString {
+    val styles = TextLinkStyles(
+        style = SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline),
+    )
+
+    return buildAnnotatedString {
+        var cursor = 0
+        HttpsPattern.findAll(text).forEach { match ->
+            // A URL at the end of a sentence swallows the full stop; the punctuation belongs to the
+            // sentence, not to the address.
+            val raw = match.value
+            val end = raw.indexOfLast { it !in ".,;:!?)]\\]}" }.let { if (it < 0) 0 else it + 1 }
+            val url = raw.substring(0, end)
+            val trailing = raw.substring(end)
+
+            if (match.range.first > cursor) append(text.substring(cursor, match.range.first))
+            withLink(LinkAnnotation.Url(url = url, styles = styles)) { append(url) }
+            append(trailing)
+            cursor = match.range.last + 1
+        }
+        if (cursor < text.length) append(text.substring(cursor))
+    }
+}
+
 /** Heading + optional body copy, used down the length of every legal document. */
 @Composable
 fun LegalClause(
@@ -224,7 +269,7 @@ fun LegalClause(
         paragraphs.forEach { paragraph ->
             Spacer(Modifier.height(Spacing.md))
             Text(
-                text = paragraph,
+                text = linkified(paragraph, linkColor = SovereignGold),
                 style = LawTheme.typography.bodyPrimary,
                 color = ParchmentWhite,
             )

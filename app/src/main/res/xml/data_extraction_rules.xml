@@ -1,19 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
-   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
+   Backup policy, Android 12 (API 31) and higher.
+
+   The app keeps only reader-created data, and both rules sections below say so explicitly
+   rather than leaning on the default of "back up everything":
+
+     - database "."              laws_database - the law content together with reading progress,
+                                 saved strategies, notes, highlights and bookmarks
+     - file "datastore"          filesDir/datastore - the consent record (consent.preferences_pb)
+                                 and app preferences (settings.preferences_pb)
+
+   Writing an <include> turns off the default: anything not listed is not carried across. A new
+   store added later therefore has to be added here and in backup_rules.xml, or it will be left
+   behind on a new device. Cache and no-backup directories are excluded by the system whatever
+   is written here.
+
+   Keep this file, res/xml/backup_rules.xml and section 4 of the Privacy Policy (Device backups,
+   legal/LegalDocuments.kt) saying the same thing.
 -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <include domain="database" path="." />
+        <include domain="file" path="datastore" />
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <include domain="database" path="." />
+        <include domain="file" path="datastore" />
     </device-transfer>
-    -->
 </data-extraction-rules>

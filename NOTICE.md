@@ -32,7 +32,10 @@ third-party material.
 ## Legal text status
 
 `Terms of Use`, `Privacy Policy`, and `Cookie Notice` in
-`app/src/main/java/com/example/a48lawsofpower/legal/LegalDocuments.kt` are
-placeholder drafts, flagged in-app with a red banner, and have not been
-reviewed by a lawyer. See the header comment in that file. The in-app
-`Attribution & Copyright` document is real text.
+`app/src/main/java/com/example/a48lawsofpower/legal/LegalDocuments.kt` were drafted in this
+repository for a United States audience. They have **not** been reviewed by a lawyer; the header
+comment in that file records the decisions taken (jurisdiction, the issue tracker as the contact
+route, agreement as a condition of use) and the clauses that most need a qualified read before
+release. The in-app `Attribution & Copyright` document is real text.
+
+Notices, complaints and takedown requests go to the project's issue tracker.

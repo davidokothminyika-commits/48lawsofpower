@@ -1,13 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-   Sample backup rules file; uncomment and customize as necessary.
-   See https://developer.android.com/guide/topics/data/autobackup
-   for details.
-   Note: This file is ignored for devices older than API 31
-   See https://developer.android.com/about/versions/12/backup-restore
+   Backup policy, Android 11 (API 30) and lower. Ignored on Android 12+, which reads
+   res/xml/data_extraction_rules.xml instead - keep the two in step.
+
+   Same explicit includes as that file:
+
+     - database "."              laws_database - law content plus reading progress, saved
+                                 strategies, notes, highlights and bookmarks
+     - file "datastore"          filesDir/datastore - the consent record and app preferences
+
+   An <include> disables the default of "backing up everything", so a new store added later must
+   be listed here too or it will not survive a reinstall on these devices.
 -->
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+    <include domain="database" path="." />
+    <include domain="file" path="datastore" />
 </full-backup-content>
