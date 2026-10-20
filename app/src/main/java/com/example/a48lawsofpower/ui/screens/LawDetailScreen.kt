@@ -33,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.foundation.clickable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.saveable.rememberSaveable
+import android.os.Build
 import android.view.InputDevice
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -167,10 +168,16 @@ fun LawDetailScreen(
     // @hide, and the public alternatives all mislead. WindowInsetsCompat.ime() reports a soft
     // keyboard, which is the opposite of what is being asked, and guessing from screen size is
     // wrong because a tablet and a phone in landscape both report large and only one has keys.
+    //
+    // InputDevice.isExternal only exists from API 29 and minSdk here is 24, so the check is
+    // skipped entirely below that rather than guessed at: the pre-29 API cannot tell a hardware
+    // keyboard from the soft one, and a guess that says "yes" would advertise shortcuts on phones
+    // that have none. This value only decides whether the hint is shown - the shortcuts themselves
+    // are wired to the focusable reader either way.
     val hasKeyboard = remember {
-        InputDevice.getDeviceIds().any { id ->
-            InputDevice.getDevice(id)?.isExternal == true &&
-                InputDevice.getDevice(id)?.supportsSource(InputDevice.SOURCE_KEYBOARD) == true
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && InputDevice.getDeviceIds().any { id ->
+            val device = InputDevice.getDevice(id)
+            device != null && device.isExternal && device.supportsSource(InputDevice.SOURCE_KEYBOARD)
         }
     }
     LaunchedEffect(hasKeyboard) {
