@@ -8,7 +8,6 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -66,17 +65,17 @@ class ReadingTrackerTest {
      * The tracker's clock is bound to the test scheduler's virtual time, so `advanceTimeBy` is
      * literally "61 seconds of reading" rather than a mock that has to be poked by hand in the right
      * order. This is what makes the timing tests below readable.
+     *
+     * No `minSeconds` either: the threshold used to live here because the tracker also decided when
+     * to celebrate, and that decision is now `pendingStreakAchievement`'s - a fold over the rows
+     * this writes, tested in StreakAchievementTest. What is left in the tracker is timing only.
      */
-    private fun TestScope.tracker(
-        dao: ProgressDao,
-        minSeconds: Int = STREAK_MIN_SECONDS,
-    ) = ReadingTracker(
+    private fun TestScope.tracker(dao: ProgressDao) = ReadingTracker(
         dao = dao,
         // backgroundScope, not the test body: the tracker's ticker is a deliberately endless loop
         // and would otherwise be an uncompleted child job that fails every test using it. This also
         // mirrors production, where the tracker's scope is the ViewModel's and dies with it.
         scope = backgroundScope,
-        minSeconds = minSeconds,
         elapsedRealtime = { testScheduler.currentTime },
         today = { TODAY },
     )
@@ -151,81 +150,6 @@ class ReadingTrackerTest {
         }
 
         assertEquals(59L, dao.getDay(TODAY)?.secondsRead)
-    }
-
-    @Test
-    fun `celebrates once when the day first clears the minimum`() = runTest {
-        val dao = FakeProgressDao()
-        val tracker = tracker(dao)
-        val seen = mutableListOf<StreakCelebration>()
-        val collector = backgroundScope.launch {
-            tracker.celebrations.collect { seen += it }
-        }
-
-        tracker.setForeground(true)
-        tracker.setReaderVisible(true)
-        advanceTimeBy(59_000)
-        tracker.flush()
-        runCurrent()
-        assertTrue("a sub-minute day is not a streak", seen.isEmpty())
-
-        advanceTimeBy(2_000)
-        tracker.flush()
-        runCurrent()
-
-        assertEquals(1, seen.size)
-        assertEquals(1, seen.single().streak)
-        collector.cancel()
-    }
-
-    @Test
-    fun `does not celebrate twice on the same day`() = runTest {
-        val dao = FakeProgressDao()
-        val tracker = tracker(dao)
-        val seen = mutableListOf<StreakCelebration>()
-        val collector = backgroundScope.launch {
-            tracker.celebrations.collect { seen += it }
-        }
-
-        tracker.setForeground(true)
-        tracker.setReaderVisible(true)
-        advanceTimeBy(70_000)
-        tracker.flush()
-        runCurrent()
-        assertEquals(1, seen.size)
-
-        // Keep reading. The day is already banked, so the reader should not be congratulated again.
-        advanceTimeBy(120_000)
-        tracker.flush()
-        tracker.setForeground(false)
-        tracker.setForeground(true)
-        advanceTimeBy(60_000)
-        tracker.flush()
-        runCurrent()
-
-        assertEquals("one reward per day, not one per flush", 1, seen.size)
-        collector.cancel()
-    }
-
-    @Test
-    fun `celebration reports the streak including today`() = runTest {
-        val dao = FakeProgressDao()
-        // Three consecutive prior days already banked.
-        for (offset in 3 downTo 1) {
-            dao.recordActivity(TODAY - offset, laws = 0, seconds = STREAK_MIN_SECONDS.toLong())
-        }
-        val tracker = tracker(dao)
-        var seen: StreakCelebration? = null
-        val collector = backgroundScope.launch { tracker.celebrations.collect { seen = it } }
-
-        tracker.setForeground(true)
-        tracker.setReaderVisible(true)
-        advanceTimeBy(STREAK_MIN_SECONDS * 1_000L + 1_000)
-        tracker.flush()
-        runCurrent()
-
-        assertEquals(4, seen?.streak)
-        collector.cancel()
     }
 
     @Test

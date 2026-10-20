@@ -8,12 +8,17 @@ import com.example.a48lawsofpower.data.ReadingStats
 import com.example.a48lawsofpower.data.STREAK_MIN_SECONDS
 import com.example.a48lawsofpower.data.computeStats
 import com.example.a48lawsofpower.data.todayEpochDay
+import com.example.a48lawsofpower.ui.progress.StreakAchievement
+import com.example.a48lawsofpower.ui.progress.pendingStreakAchievement
+import com.example.a48lawsofpower.ui.settings.SettingsStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 
 /**
@@ -56,11 +61,20 @@ private val WEEKDAY_INITIALS = arrayOf("", "M", "T", "W", "T", "F", "S", "S")
  * bank a day. `secondsToday` is read from the unfiltered row set, so "minutes read today" stays
  * honest even on a day too short to count - the goal readout needs the true number, not the
  * banked one.
+ *
+ * It also owns [streakAchievement], the overlay's trigger, because that is the same fold with the
+ * settings store's acknowledgment subtracted - keeping it here is what guarantees the card and the
+ * Streak figure above are reading one table once.
  */
-class ProfileViewModel(progressDao: ProgressDao) : ViewModel() {
+class ProfileViewModel(progressDao: ProgressDao, private val settings: SettingsStore) : ViewModel() {
 
     /** Everything the screen needs, from one read of one table. */
-    private data class Snapshot(val stats: ReadingStats, val week: List<RecentDay>)
+    private data class Snapshot(
+        val stats: ReadingStats,
+        val week: List<RecentDay>,
+        /** The rows themselves, so the achievement below folds the same read rather than another. */
+        val days: List<ReadingDayEntity>,
+    )
 
     /**
      * One subscription to `reading_days`, shared by both figures below.
@@ -85,6 +99,7 @@ class ProfileViewModel(progressDao: ProgressDao) : ViewModel() {
                         secondsByDay = days.associate { it.day to it.secondsRead },
                         minSecondsPerDay = STREAK_MIN_SECONDS,
                     ),
+                    days = days,
                     week = (0 until WEEK_LENGTH).map { back ->
                         val day = today - (WEEK_LENGTH - 1 - back)
                         RecentDay(
@@ -96,11 +111,48 @@ class ProfileViewModel(progressDao: ProgressDao) : ViewModel() {
                 )
             }
             .flowOn(Dispatchers.Default)
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Snapshot(ReadingStats(), emptyList()))
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5_000),
+                Snapshot(ReadingStats(), emptyList(), emptyList()),
+            )
 
     val stats: StateFlow<ReadingStats> =
         snapshot.map { it.stats }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ReadingStats())
+
+    /**
+     * The achievement the overlay is owed, or null when nothing is outstanding.
+     *
+     * Hanging off [snapshot] rather than querying again: this screen already gave up its duplicate
+     * read of `reading_days`, and the fold below is the same rows the Streak figure above is built
+     * from, so the card and the number can only ever agree.
+     *
+     * The acknowledgment comes from the settings store, which is what makes this a *rule* rather
+     * than an event - "a banked day newer than the last one you were congratulated for". It covers
+     * the day as it is earned, a launch that never got to show it, and data restored onto a new
+     * device, without a second code path for any of them. See [pendingStreakAchievement].
+     */
+    val streakAchievement: StateFlow<StreakAchievement?> =
+        combine(snapshot, settings.lastCelebratedDay) { current, celebratedDay ->
+            pendingStreakAchievement(
+                days = current.days,
+                today = todayEpochDay(),
+                lastCelebratedDay = celebratedDay,
+            )
+        }
+            .flowOn(Dispatchers.Default)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /**
+     * Writes the acknowledgment for the day the reader has just been shown.
+     *
+     * Called when the card leaves rather than when it arrives, so an interrupted animation stays
+     * outstanding and is shown again - once - on the next launch.
+     */
+    fun markStreakCelebrated(day: Long) {
+        viewModelScope.launch { settings.markStreakCelebrated(day) }
+    }
 
     /**
      * The last seven days, oldest first, always exactly [WEEK_LENGTH] entries.

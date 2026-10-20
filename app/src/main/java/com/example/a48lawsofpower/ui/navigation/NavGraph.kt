@@ -50,8 +50,9 @@ import com.example.a48lawsofpower.ui.screens.LibraryFilter
 import com.example.a48lawsofpower.ui.screens.LibraryScreen
 import com.example.a48lawsofpower.ui.profile.ProfileViewModel
 import com.example.a48lawsofpower.ui.progress.ReadingTrackerViewModel
-import com.example.a48lawsofpower.ui.progress.StreakCelebration
-import com.example.a48lawsofpower.ui.components.StreakCelebrationOverlay
+import com.example.a48lawsofpower.ui.progress.StreakAchievement
+import com.example.a48lawsofpower.ui.components.StreakAchievementOverlay
+import com.example.a48lawsofpower.data.todayEpochDay
 import com.example.a48lawsofpower.ui.screens.LegalDocumentScreen
 import com.example.a48lawsofpower.ui.screens.LegalScreen
 import com.example.a48lawsofpower.ui.screens.SplashScreen
@@ -152,15 +153,28 @@ fun AppNavGraph(
     val isReaderVisible = backStackEntry?.destination?.hasRoute<DetailRoute>() == true
     LaunchedEffect(isReaderVisible) { readingTrackerViewModel.setReaderVisible(isReaderVisible) }
 
-    var celebration by remember { mutableStateOf<StreakCelebration?>(null) }
-    LaunchedEffect(Unit) {
-        readingTrackerViewModel.celebrations.collect { celebration = it }
+    // The achievement overlay is owed whatever is *unacknowledged*, not what happened at a
+    // particular instant: [ProfileViewModel.streakAchievement] is the newest banked day the reader
+    // has not been congratulated for, so the day being earned in the reader, a launch that never got
+    // to show it, and days restored onto a new device are all one case. It shows at most once here
+    // because there is at most one of them outstanding, and it stops being outstanding when the card
+    // leaves and the acknowledgment is written.
+    val pendingAchievement by profileViewModel.streakAchievement.collectAsStateWithLifecycle()
+    var achievement by remember { mutableStateOf<StreakAchievement?>(null) }
+    LaunchedEffect(pendingAchievement, splashDismissed) {
+        // `splashDismissed` in the key so an achievement that arrives while the entry screen is up
+        // waits behind it rather than layering a congratulation onto the first frame a returning
+        // reader sees. For a returning reader the flag starts true, so this never delays anything.
+        if (pendingAchievement != null && achievement == null && splashDismissed) {
+            achievement = pendingAchievement
+        }
     }
-    // Leaving the reader clears it. A reward for reading that outlives the reader would sit on top
-    // of the Dossier, congratulating someone for something they can no longer see themselves doing.
-    LaunchedEffect(isReaderVisible) {
-        if (!isReaderVisible) celebration = null
-    }
+    // Deliberately *not* cleared when the reader leaves the law - the old card was, on the theory
+    // that a reward outliving the reader sits on the Dossier congratulating them for something they
+    // can no longer see themselves doing. That cannot hold now: hiding it mid-flight would leave the
+    // day unacknowledged, and the next launch would show it again, so the reader would meet the same
+    // achievement twice. It runs its three and a half seconds wherever they are, and that is the end
+    // of it - one celebration, counted once.
 
     Scaffold(
         bottomBar = {
@@ -307,6 +321,19 @@ fun AppNavGraph(
                         },
                         onOpenNotes = { navController.navigate(NotesRoute) { launchSingleTop = true } },
                         onOpenLegal = { navController.navigate(LegalRoute) { launchSingleTop = true } },
+                        // Re-reading the achievement on demand. The pending day is the real thing
+                        // and will be acknowledged when the card leaves; with nothing pending this
+                        // is a replay of the figure already on screen, so there is nothing to
+                        // acknowledge afterwards. The screen only offers the tap at all when there
+                        // is a streak to show.
+                        onStreakClick = {
+                            achievement = pendingAchievement
+                                ?: StreakAchievement(
+                                    streak = readingStats.currentStreak,
+                                    day = todayEpochDay(),
+                                    isFirstEver = false,
+                                )
+                        },
                         contentPadding = innerPadding,
                     )
                 }
@@ -386,9 +413,15 @@ fun AppNavGraph(
 
             // Last in the Box, so it draws above both the screen and the status bar scrim. It
             // carries its own status-bar padding and so clears the scrim rather than sitting on it.
-            StreakCelebrationOverlay(
-                celebration = celebration,
-                onDismiss = { celebration = null },
+            StreakAchievementOverlay(
+                achievement = achievement,
+                onDismiss = {
+                    achievement = null
+                    // Acknowledge what is *pending*, not merely what was on screen. A replay tapped
+                    // out of the Profile has no pending day behind it, and must not be able to mark
+                    // a day as celebrated that never was.
+                    pendingAchievement?.let { profileViewModel.markStreakCelebrated(it.day) }
+                },
                 modifier = Modifier.align(Alignment.TopCenter),
             )
         }

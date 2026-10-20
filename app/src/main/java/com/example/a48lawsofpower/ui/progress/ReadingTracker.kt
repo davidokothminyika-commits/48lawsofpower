@@ -2,49 +2,12 @@ package com.example.a48lawsofpower.ui.progress
 
 import android.os.SystemClock
 import com.example.a48lawsofpower.data.ProgressDao
-import com.example.a48lawsofpower.data.STREAK_MIN_SECONDS
-import com.example.a48lawsofpower.data.computeStats
 import com.example.a48lawsofpower.data.todayEpochDay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-
-/**
- * A streak that has just been earned, and what to say about it.
- *
- * @property streak the streak *including* today, so a reader who has been away a week and comes
- *   back sees the number they have just earned rather than the one they left with.
- */
-data class StreakCelebration(
-    val streak: Int,
-    val day: Long,
-)
-
-/**
- * What to say about a streak of this length.
- *
- * The voice is the app's own - court, discipline, compounding - and it deliberately never implies
- * the reader has fallen behind. There is no "don't break it!" copy here. Guilt is a bad way to
- * keep someone reading, and a shame-driven streak is exactly the mechanic that makes people quit
- * the app entirely.
- */
-fun encouragementFor(streak: Int): String = when {
-    streak >= 100 -> "A hundred unbroken days. The court does not forget this."
-    streak >= 60 -> "Two months without a single day missed."
-    streak >= 30 -> "A full month. Discipline, compounded."
-    streak >= 21 -> "Three weeks. This is no longer an effort."
-    streak >= 14 -> "A fortnight, unbroken."
-    streak >= 7 -> "A full week of study."
-    streak >= 3 -> "It is becoming a habit."
-    streak >= 2 -> "Two in a row. The pattern holds."
-    else -> "The streak begins."
-}
 
 /**
  * Accrues reading time and writes it to `reading_days`.
@@ -77,7 +40,6 @@ fun encouragementFor(streak: Int): String = when {
 class ReadingTracker(
     private val dao: ProgressDao,
     private val scope: CoroutineScope,
-    private val minSeconds: Int = STREAK_MIN_SECONDS,
     private val elapsedRealtime: () -> Long = SystemClock::elapsedRealtime,
     private val today: () -> Long = ::todayEpochDay,
     private val tickMillis: Long = 1_000L,
@@ -100,19 +62,6 @@ class ReadingTracker(
     private var windowOpenedAt = 0L
     private var pendingMillis = 0L
     private var ticker: Job? = null
-
-    private val _celebrations = MutableSharedFlow<StreakCelebration>(extraBufferCapacity = 1)
-
-    /**
-     * Emits exactly once per day, on the flush where today first crosses the threshold.
-     *
-     * "Once per day" falls out of the condition rather than needing a flag or a persisted
-     * "have I already congratulated them" row: after the crossing is written, today's total is
-     * already at or above the minimum, so the next flush - and the first flush after a cold start -
-     * fails `before < min && after >= min` and stays quiet. A persisted key would have been another
-     * thing to keep in sync with the database for no gain.
-     */
-    val celebrations: SharedFlow<StreakCelebration> = _celebrations.asSharedFlow()
 
     fun setForeground(value: Boolean) {
         if (foreground != value) {
@@ -184,27 +133,14 @@ class ReadingTracker(
         val seconds = pendingMillis / 1_000L
         if (seconds <= 0L) return
 
-        val day = today()
-        val before = dao.getDay(day)?.secondsRead ?: 0L
-        dao.recordActivity(day = day, laws = 0, seconds = seconds)
+        dao.recordActivity(day = today(), laws = 0, seconds = seconds)
         pendingMillis -= seconds * 1_000L
 
-        val after = dao.getDay(day)?.secondsRead ?: 0L
-        if (before < minSeconds && after >= minSeconds) {
-            _celebrations.tryEmit(StreakCelebration(streak = streakOn(day), day = day))
-        }
-    }
-
-    /** The streak as it stands on disk, on the same rules the Profile screen reads. */
-    private suspend fun streakOn(day: Long): Int {
-        val rows = dao.observeAllDays().first()
-        return computeStats(
-            days = rows.map { it.day },
-            today = day,
-            lawsByDay = rows.associate { it.day to it.lawsRead },
-            secondsByDay = rows.associate { it.day to it.secondsRead },
-            minSecondsPerDay = minSeconds,
-        ).currentStreak
+        // Deliberately no "did today just cross the minimum" test here. The reward used to be
+        // emitted from this exact spot, and it meant the celebration existed only in memory: leave
+        // the law before it lands, or die mid-animation, and the day was banked with nothing ever
+        // shown. `pendingStreakAchievement` re-derives it from the rows this write just changed,
+        // and `streak_celebrated_day` is what keeps the ones that *were* shown from showing again.
     }
 
     private companion object {

@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.lifecycle.ViewModel
@@ -62,9 +63,33 @@ class SettingsStore(private val context: Context) {
         context.settingsDataStore.edit { it[KeySeenIntro] = true }
     }
 
+    /**
+     * The most recent calendar day whose streak achievement the reader has actually been shown.
+     *
+     * Null until that has ever happened on this device. This is what turns the celebration from
+     * something that has to be caught live into something that can be *acknowledged*: the number is
+     * re-derived from `reading_days` on every launch, so an achievement that was interrupted
+     * mid-animation, that arrived with restored data, or that pre-dates this key is still pending
+     * next time - and is celebrated exactly once, when it is finally acknowledged.
+     *
+     * An epoch-day rather than a timestamp, for the reason `reading_days` uses one: it is only ever
+     * compared against rows already keyed that way, so a timezone change cannot leave the
+     * acknowledgment and the table disagreeing about which day is which.
+     */
+    val lastCelebratedDay: Flow<Long?> = context.settingsDataStore.data
+        .catch { cause ->
+            if (cause is IOException) emit(emptyPreferences()) else throw cause
+        }
+        .map { it[KeyCelebratedDay] }
+
+    suspend fun markStreakCelebrated(day: Long) {
+        context.settingsDataStore.edit { it[KeyCelebratedDay] = day }
+    }
+
     private companion object {
         val KeyThemeMode = stringPreferencesKey("theme_mode")
         val KeySeenIntro = booleanPreferencesKey("seen_intro")
+        val KeyCelebratedDay = longPreferencesKey("streak_celebrated_day")
     }
 }
 

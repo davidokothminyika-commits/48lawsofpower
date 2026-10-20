@@ -33,6 +33,15 @@ import com.example.a48lawsofpower.ui.theme._48LawsOfPowerTheme
 
 class MainActivity : ComponentActivity() {
 
+    /**
+     * One store for the whole Activity, shared by the settings and profile factories below.
+     *
+     * The DataStore itself is a process-wide singleton keyed on the file name, so two instances
+     * would still agree - but a single one keeps that an implementation detail rather than an
+     * assumption two call sites have to share.
+     */
+    private val settingsStore by lazy { SettingsStore(applicationContext) }
+
     // Resolved once per Activity instead of on every recomposition of the content lambda.
     private val viewModel: LawsViewModel by viewModels {
         object : ViewModelProvider.Factory {
@@ -58,7 +67,7 @@ class MainActivity : ComponentActivity() {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 val database = LawDatabase.getDatabase(applicationContext)
                 @Suppress("UNCHECKED_CAST")
-                return ProfileViewModel(database.progressDao()) as T
+                return ProfileViewModel(database.progressDao(), settingsStore) as T
             }
         }
     }
@@ -77,7 +86,7 @@ class MainActivity : ComponentActivity() {
         object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 @Suppress("UNCHECKED_CAST")
-                return SettingsViewModel(SettingsStore(applicationContext)) as T
+                return SettingsViewModel(settingsStore) as T
             }
         }
     }

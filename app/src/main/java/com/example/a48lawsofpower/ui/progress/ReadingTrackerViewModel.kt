@@ -3,7 +3,6 @@ package com.example.a48lawsofpower.ui.progress
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.a48lawsofpower.data.ProgressDao
-import kotlinx.coroutines.flow.SharedFlow
 
 /**
  * Holds the [ReadingTracker] for the Activity's lifetime.
@@ -19,8 +18,6 @@ import kotlinx.coroutines.flow.SharedFlow
 class ReadingTrackerViewModel(dao: ProgressDao) : ViewModel() {
 
     private val tracker = ReadingTracker(dao, viewModelScope)
-
-    val celebrations: SharedFlow<StreakCelebration> = tracker.celebrations
 
     fun setForeground(foreground: Boolean) = tracker.setForeground(foreground)
 

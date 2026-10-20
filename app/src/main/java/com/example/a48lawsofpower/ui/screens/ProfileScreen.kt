@@ -79,6 +79,8 @@ fun ProfileScreen(
     onOpenStrategies: () -> Unit,
     onOpenNotes: () -> Unit,
     onOpenLegal: () -> Unit,
+    /** Reopens the achievement card for the current streak. See [StatRow]. */
+    onStreakClick: () -> Unit,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(),
 ) {
@@ -117,6 +119,7 @@ fun ProfileScreen(
                 week = week,
                 totalLaws = totalLaws,
                 masteredLaws = masteredLaws,
+                onStreakClick = onStreakClick,
                 modifier = Modifier.padding(horizontal = Spacing.md),
             )
         }
@@ -218,6 +221,11 @@ private fun SectionEyebrow(text: String, modifier: Modifier = Modifier) {
  *    see that today is still unfilled.
  *  - **The rest** is reference and sits at the bottom in ordinary type.
  *
+ * The streak figure also doubles as the way back into the achievement card. That celebration is
+ * ephemeral by design - it plays once, for a few seconds, and acknowledging it is what stops it
+ * coming back - so a reader who wants to look at it again has no other route. A streak of zero has
+ * nothing to celebrate, so the tap is only offered when there is one.
+ *
  * "Annotations" was dropped from here entirely: the Notes row below already says the same number
  * with more context, and two identical figures on one screen reads as an error.
  */
@@ -227,6 +235,7 @@ private fun StatRow(
     week: List<RecentDay>,
     totalLaws: Int,
     masteredLaws: Int,
+    onStreakClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -239,7 +248,13 @@ private fun StatRow(
         MasteryBar(mastered = masteredLaws, total = totalLaws)
         Spacer(Modifier.height(Spacing.lg))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Stat("Streak", "${stats.currentStreak}d", ObservanceGreen, Modifier.weight(1f))
+            Stat(
+                label = "Streak",
+                value = "${stats.currentStreak}d",
+                tint = ObservanceGreen,
+                modifier = Modifier.weight(1f),
+                onClick = if (stats.currentStreak > 0) onStreakClick else null,
+            )
             Stat("Best", "${stats.longestStreak}d", ShadowGray, Modifier.weight(1f))
             Stat("Days read", "${stats.totalDays}", ParchmentWhite, Modifier.weight(1f))
         }
@@ -374,9 +389,29 @@ private fun WeekStrip(week: List<RecentDay>, todayQualified: Boolean, modifier: 
  * on the tab. See [RecentDay.initial].
  */
 
+/**
+ * One figure: the value, then its label.
+ *
+ * [onClick] is null for the two figures that are reference only. Conditional rather than a no-op
+ * lambda because a clickable with an empty action still announces itself to a screen reader as
+ * something that does something, and "Best: 5d, double tap to activate" with nothing behind it is
+ * worse than no affordance at all.
+ */
 @Composable
-private fun Stat(label: String, value: String, tint: Color, modifier: Modifier = Modifier) {
-    Column(modifier = modifier) {
+private fun Stat(
+    label: String,
+    value: String,
+    tint: Color,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+) {
+    Column(
+        modifier = if (onClick != null) {
+            modifier.clickable(onClick = onClick)
+        } else {
+            modifier
+        },
+    ) {
         Text(
             text = value,
             style = LawTheme.typography.lawTitle.copy(
